@@ -1,0 +1,45 @@
+# Dependencies & build outputs
+**/node_modules
+**/dist
+**/build
+**/.vite
+client/dist
+server/public
+
+# Env / secrets — pass at runtime (-e / --env-file), never bake into the image
+**/.env
+**/.env.*
+!**/.env.example
+
+# Git / IDE / OS
+.git
+.gitignore
+.gitattributes
+.cursor
+.vscode
+.idea
+**/.DS_Store
+**/Thumbs.db
+**/*.swp
+**/*~
+
+# Logs & coverage
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+**/coverage
+**/.nyc_output
+
+# Local runtime data (mount a volume if needed)
+saved
+**/saved
+
+# Docs / misc that are not needed to build or run
+**/*.md
+!README.md
+agent-transcripts
+**/agent-tools
+**/assets
+
+# Nested locks inside dependencies (safety)
+**/node_modules/**/package-lock.json

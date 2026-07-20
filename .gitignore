@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Build outputs
+dist/
+**/dist/
+build/
+**/build/
+client/dist/
+server/public/
+
+# Runtime / local data
+saved/orders/*
+!saved/orders/.gitkeep
+server/fonts/*
+!server/fonts/.gitkeep
+server/storage/
+server/tmp/
+**/tmp/
+
+# Logs & OS / IDE
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
