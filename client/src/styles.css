@@ -3388,9 +3388,7 @@ html:has(.main-model-picker) body {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
   padding: 4px 0;
 }
 
