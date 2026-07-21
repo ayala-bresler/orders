@@ -23,6 +23,9 @@ saved/orders/*
 !saved/orders/.gitkeep
 server/fonts/*
 !server/fonts/.gitkeep
+# Required fonts for /api/template/font, DXF bake, and PDF Hebrew text
+!server/fonts/FbKidushPro-bold.otf
+!server/fonts/NotoSansHebrew.ttf
 server/storage/
 server/tmp/
 **/tmp/
