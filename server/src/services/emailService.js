@@ -1,11 +1,10 @@
 'use strict';
 
 /**
- * Email delivery for DXF/PDF exports.
+ * Email delivery for DXF/PDF exports via SMTP (Nodemailer).
+ * Optional fallback: RESEND_API_KEY (HTTPS) when SMTP is not configured.
  *
- * Railway Free/Hobby blocks outbound SMTP (25/465/587) → use RESEND_API_KEY (HTTPS).
- * Local / Railway Pro can still use classic SMTP (Gmail App Password, etc.).
- *
+ * Note: Railway Free/Hobby may block outbound SMTP (25/465/587).
  * @see https://docs.railway.com/networking/outbound-networking
  */
 
@@ -20,20 +19,6 @@ try {
   dns.setDefaultResultOrder('ipv4first');
 } catch {
   /* older Node */
-}
-
-function isRailway() {
-  return Boolean(
-    process.env.RAILWAY_ENVIRONMENT ||
-      process.env.RAILWAY_PROJECT_ID ||
-      process.env.RAILWAY_SERVICE_ID
-  );
-}
-
-/** Hobby/Free block SMTP; Pro can set ALLOW_SMTP=true after upgrade + redeploy. */
-function smtpLikelyBlocked() {
-  if (process.env.ALLOW_SMTP === 'true') return false;
-  return isRailway();
 }
 
 function getConfig() {
@@ -55,16 +40,8 @@ function getConfig() {
   };
 }
 
-function missingResendOnRailwayError() {
-  const err = new Error(
-    'שליחת מייל ב-Railway דורשת Resend (HTTPS). ' +
-      'הגדירו Variables: RESEND_API_KEY + RESEND_FROM + DXF_RECIPIENT_EMAIL, ואז Redeploy. ' +
-      'הרשמה: https://resend.com — בדיקה: from כמו Orders <onboarding@resend.dev>. ' +
-      'לחלופין: שדרוג ל-Pro + ALLOW_SMTP=true + redeploy. ' +
-      'https://docs.railway.com/networking/outbound-networking'
-  );
-  err.status = 503;
-  return err;
+function hasSmtp(cfg) {
+  return Boolean(cfg.host && cfg.user && cfg.pass);
 }
 
 function isGmail(cfg) {
@@ -102,10 +79,10 @@ async function resolveSmtpHost(hostname) {
 }
 
 async function createTransport(cfg) {
-  if (!cfg.host || !cfg.user || !cfg.pass) {
+  if (!hasSmtp(cfg)) {
     const err = new Error(
-      'הגדרות שליחת מייל חסרות. ב-Railway (Hobby) הגדירו RESEND_API_KEY, ' +
-        'או מקומית: SMTP_HOST, SMTP_USER, SMTP_PASS.'
+      'הגדרות SMTP חסרות. הגדירו SMTP_HOST, SMTP_USER, SMTP_PASS ' +
+        '(או RESEND_API_KEY + RESEND_FROM כחלופה).'
     );
     err.status = 503;
     throw err;
@@ -124,9 +101,9 @@ async function createTransport(cfg) {
     secure,
     requireTLS: !secure,
     tls: servername ? { servername } : undefined,
-    connectionTimeout: 8_000,
-    greetingTimeout: 8_000,
-    socketTimeout: 30_000,
+    connectionTimeout: 15_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 60_000,
     auth: { user: cfg.user, pass: cfg.pass },
   });
 }
@@ -137,7 +114,7 @@ function toBase64(content) {
 }
 
 /**
- * Send via Resend HTTPS API (works on Railway Hobby — port 443).
+ * Send via Resend HTTPS API (optional fallback).
  * https://resend.com/docs/api-reference/emails/send-email
  */
 async function sendViaResend(cfg, { from, to, subject, text, attachments }) {
@@ -206,10 +183,9 @@ function smtpTimeoutError(err) {
 
   const e = new Error(
     'שליחת מייל נכשלה: Connection timeout. ' +
-      'ב-Railway (תוכניות Free/Hobby) פורטי SMTP (25/465/587) חסומים. ' +
-      'הגדירו RESEND_API_KEY + RESEND_FROM (שליחה ב-HTTPS), ' +
-      'או שדרגו ל-Pro ואז redeploy. ' +
-      'ראו: https://docs.railway.com/networking/outbound-networking'
+      'בדקו SMTP_HOST/PORT והרשת. ב-Railway Free/Hobby פורטי SMTP לעיתים חסומים — ' +
+      'שדרוג ל-Pro או שימוש ב-RESEND_API_KEY. ' +
+      'https://docs.railway.com/networking/outbound-networking'
   );
   e.status = 503;
   return e;
@@ -256,6 +232,7 @@ function buildAttachments(opts) {
 
 /**
  * Send quarter DXF exports (and optional PDF) to the configured mailbox.
+ * Prefers SMTP when configured; otherwise Resend if RESEND_API_KEY is set.
  */
 async function sendDxfEmail(opts) {
   const cfg = getConfig();
@@ -276,48 +253,54 @@ async function sendDxfEmail(opts) {
     attachments,
   };
 
-  // Prefer Resend HTTPS (works on Railway Hobby — port 443).
+  if (hasSmtp(cfg)) {
+    try {
+      const transport = await createTransport(cfg);
+      await transport.sendMail(mail);
+    } catch (err) {
+      const timeoutErr = smtpTimeoutError(err);
+      if (timeoutErr) throw timeoutErr;
+
+      const wrapped = authError(err);
+      if (!wrapped.status) wrapped.status = 503;
+      if (wrapped === err) {
+        const e = new Error(`שליחת מייל נכשלה: ${err.message || 'שגיאת SMTP'}`);
+        e.status = 503;
+        throw e;
+      }
+      throw wrapped;
+    }
+    return { sentTo: cfg.recipient, attachmentCount: attachments.length, via: 'smtp' };
+  }
+
   if (cfg.resendApiKey) {
     await sendViaResend(cfg, mail);
     return { sentTo: cfg.recipient, attachmentCount: attachments.length, via: 'resend' };
   }
 
-  // Do not hang on blocked SMTP — Railway proxy then shows "Application failed to respond".
-  if (smtpLikelyBlocked()) {
-    throw missingResendOnRailwayError();
-  }
-
-  try {
-    const transport = await createTransport(cfg);
-    await transport.sendMail(mail);
-  } catch (err) {
-    const timeoutErr = smtpTimeoutError(err);
-    if (timeoutErr) throw timeoutErr;
-
-    const wrapped = authError(err);
-    if (!wrapped.status) wrapped.status = 503;
-    if (wrapped === err) {
-      const e = new Error(`שליחת מייל נכשלה: ${err.message || 'שגיאת SMTP'}`);
-      e.status = 503;
-      throw e;
-    }
-    throw wrapped;
-  }
-
-  return { sentTo: cfg.recipient, attachmentCount: attachments.length, via: 'smtp' };
+  const err = new Error(
+    'הגדרות שליחת מייל חסרות. הגדירו SMTP_HOST, SMTP_USER, SMTP_PASS ' +
+      '(או RESEND_API_KEY + RESEND_FROM).'
+  );
+  err.status = 503;
+  throw err;
 }
 
 async function verifySmtp() {
   const cfg = getConfig();
+  if (hasSmtp(cfg)) {
+    const transport = await createTransport(cfg);
+    await transport.verify();
+    return { ok: true, user: cfg.user, via: 'smtp' };
+  }
   if (cfg.resendApiKey) {
     return { ok: true, via: 'resend' };
   }
-  if (smtpLikelyBlocked()) {
-    throw missingResendOnRailwayError();
-  }
-  const transport = await createTransport(cfg);
-  await transport.verify();
-  return { ok: true, user: cfg.user, via: 'smtp' };
+  const err = new Error(
+    'הגדרות שליחת מייל חסרות. הגדירו SMTP_HOST, SMTP_USER, SMTP_PASS.'
+  );
+  err.status = 503;
+  throw err;
 }
 
 module.exports = {
