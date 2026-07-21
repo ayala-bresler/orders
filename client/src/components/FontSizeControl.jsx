@@ -1,25 +1,53 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { MAX_FONT_SIZE_PX, fontSizePopupOptions } from '../utils/verseStyles.js';
 
+const POPUP_GAP = 4;
 const POPUP_MIN_SPACE = 180;
 
-function measurePopupFlip(el) {
-  if (!el) return false;
-  const rect = el.getBoundingClientRect();
+function layoutBounds() {
   const footer = document.querySelector('.verse-page .vp-footer');
   const steps = document.querySelector('.app:has(.main-editor) .steps');
-  const bottomBound = footer
-    ? footer.getBoundingClientRect().top
-    : window.innerHeight;
-  const topBound = steps
-    ? steps.getBoundingClientRect().bottom
-    : 0;
-  const spaceBelow = bottomBound - rect.bottom - 8;
-  const spaceAbove = rect.top - topBound - 8;
-  return spaceBelow < POPUP_MIN_SPACE && spaceAbove > spaceBelow;
+  return {
+    topBound: steps ? steps.getBoundingClientRect().bottom : 0,
+    bottomBound: footer
+      ? footer.getBoundingClientRect().top
+      : window.innerHeight,
+  };
 }
 
-/** Font size readout — click opens compact size popup. */
+function measurePopupPlacement(el) {
+  if (!el) {
+    return { flipUp: false, style: null };
+  }
+  const rect = el.getBoundingClientRect();
+  const { topBound, bottomBound } = layoutBounds();
+  const spaceBelow = bottomBound - rect.bottom - POPUP_GAP;
+  const spaceAbove = rect.top - topBound - POPUP_GAP;
+  const flipUp = spaceBelow < POPUP_MIN_SPACE && spaceAbove > spaceBelow;
+  const maxHeight = Math.max(120, Math.floor(flipUp ? spaceAbove : spaceBelow));
+
+  const style = {
+    position: 'fixed',
+    left: `${Math.round(rect.left + rect.width / 2)}px`,
+    transform: 'translateX(-50%)',
+    width: `${Math.max(42, Math.round(rect.width))}px`,
+    maxHeight: `${maxHeight}px`,
+    zIndex: 4000,
+  };
+
+  if (flipUp) {
+    style.bottom = `${Math.round(window.innerHeight - rect.top + POPUP_GAP)}px`;
+    style.top = 'auto';
+  } else {
+    style.top = `${Math.round(rect.bottom + POPUP_GAP)}px`;
+    style.bottom = 'auto';
+  }
+
+  return { flipUp, style };
+}
+
+/** Font size readout — click opens compact size popup (portaled to escape overflow clips). */
 export default function FontSizeControl({
   value,
   custom,
@@ -31,15 +59,34 @@ export default function FontSizeControl({
   const popupRef = useRef(null);
   const [open, setOpen] = useState(false);
   const [flipUp, setFlipUp] = useState(false);
+  const [popupStyle, setPopupStyle] = useState(null);
   const options = fontSizePopupOptions(baseFontSizePx ?? value);
+
+  const reposition = () => {
+    const next = measurePopupPlacement(wrapRef.current);
+    setFlipUp(next.flipUp);
+    setPopupStyle(next.style);
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    reposition();
+    const onWin = () => reposition();
+    window.addEventListener('resize', onWin);
+    window.addEventListener('scroll', onWin, true);
+    return () => {
+      window.removeEventListener('resize', onWin);
+      window.removeEventListener('scroll', onWin, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return undefined;
 
     const onDocPointerDown = (e) => {
-      if (!wrapRef.current?.contains(e.target)) {
-        setOpen(false);
-      }
+      const t = e.target;
+      if (wrapRef.current?.contains(t) || popupRef.current?.contains(t)) return;
+      setOpen(false);
     };
 
     document.addEventListener('pointerdown', onDocPointerDown);
@@ -50,16 +97,19 @@ export default function FontSizeControl({
     if (!open || !popupRef.current) return;
     const selected = popupRef.current.querySelector('.font-size-popup-item.selected');
     selected?.scrollIntoView({ block: 'nearest' });
-  }, [open, flipUp, value]);
+  }, [open, flipUp, value, popupStyle]);
 
   const toggle = (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (open) {
       setOpen(false);
+      setPopupStyle(null);
       return;
     }
-    setFlipUp(measurePopupFlip(wrapRef.current));
+    const next = measurePopupPlacement(wrapRef.current);
+    setFlipUp(next.flipUp);
+    setPopupStyle(next.style);
     setOpen(true);
   };
 
@@ -67,6 +117,38 @@ export default function FontSizeControl({
     onSelect(px);
     setOpen(false);
   };
+
+  const popup = open && popupStyle
+    ? createPortal(
+        <ul
+          ref={popupRef}
+          className={`font-size-popup font-size-popup--portal${flipUp ? ' flip-up' : ''}`}
+          role="listbox"
+          aria-label={ariaLabel}
+          style={popupStyle}
+        >
+          {options.map((px) => {
+            const selected = Math.abs(px - value) < 0.01;
+            const disabled = px > MAX_FONT_SIZE_PX + 0.01;
+            return (
+              <li key={px} role="presentation">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  className={`font-size-popup-item${selected ? ' selected' : ''}`}
+                  disabled={disabled}
+                  onClick={() => pick(px)}
+                >
+                  {Number.isInteger(px) ? px : px}
+                </button>
+              </li>
+            );
+          })}
+        </ul>,
+        document.body
+      )
+    : null;
 
   return (
     <div
@@ -84,31 +166,7 @@ export default function FontSizeControl({
       >
         {value}
       </button>
-      <ul
-        ref={popupRef}
-        className="font-size-popup"
-        role="listbox"
-        aria-label={ariaLabel}
-      >
-        {options.map((px) => {
-          const selected = Math.abs(px - value) < 0.01;
-          const disabled = px > MAX_FONT_SIZE_PX + 0.01;
-          return (
-            <li key={px} role="presentation">
-              <button
-                type="button"
-                role="option"
-                aria-selected={selected}
-                className={`font-size-popup-item${selected ? ' selected' : ''}`}
-                disabled={disabled}
-                onClick={() => pick(px)}
-              >
-                {Number.isInteger(px) ? px : px}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      {popup}
     </div>
   );
 }
