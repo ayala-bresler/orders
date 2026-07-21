@@ -164,13 +164,15 @@ async function getVariantByModel(modelCode, categoryId = CLIENT_CATEGORY_ID) {
   return rows[0] || null;
 }
 
-/** Selectable parchment diameters for laser templates (product_sizes). */
+/** Selectable plate diameters for laser templates (product_sizes). Max size: 15. */
 async function listProductSizes(productTypeCode = '01') {
   const { rows } = await query(
     `SELECT size_code, product_type_code, size_name, svg_template_file,
             diameter_mm, export_scale_factor, sort_order, supports_verses
        FROM product_sizes
       WHERE product_type_code = $1
+        AND size_code IS DISTINCT FROM '16'
+        AND (diameter_mm IS NULL OR diameter_mm <= 15)
       ORDER BY sort_order, size_name`,
     [productTypeCode]
   );

@@ -22,6 +22,20 @@ try {
   /* older Node */
 }
 
+function isRailway() {
+  return Boolean(
+    process.env.RAILWAY_ENVIRONMENT ||
+      process.env.RAILWAY_PROJECT_ID ||
+      process.env.RAILWAY_SERVICE_ID
+  );
+}
+
+/** Hobby/Free block SMTP; Pro can set ALLOW_SMTP=true after upgrade + redeploy. */
+function smtpLikelyBlocked() {
+  if (process.env.ALLOW_SMTP === 'true') return false;
+  return isRailway();
+}
+
 function getConfig() {
   const pass = (process.env.SMTP_PASS || '').replace(/\s+/g, '');
   return {
@@ -39,6 +53,18 @@ function getConfig() {
     recipient: (process.env.DXF_RECIPIENT_EMAIL || '').trim(),
     resendApiKey: (process.env.RESEND_API_KEY || '').trim(),
   };
+}
+
+function missingResendOnRailwayError() {
+  const err = new Error(
+    'שליחת מייל ב-Railway דורשת Resend (HTTPS). ' +
+      'הגדירו Variables: RESEND_API_KEY + RESEND_FROM + DXF_RECIPIENT_EMAIL, ואז Redeploy. ' +
+      'הרשמה: https://resend.com — בדיקה: from כמו Orders <onboarding@resend.dev>. ' +
+      'לחלופין: שדרוג ל-Pro + ALLOW_SMTP=true + redeploy. ' +
+      'https://docs.railway.com/networking/outbound-networking'
+  );
+  err.status = 503;
+  return err;
 }
 
 function isGmail(cfg) {
@@ -98,9 +124,9 @@ async function createTransport(cfg) {
     secure,
     requireTLS: !secure,
     tls: servername ? { servername } : undefined,
-    connectionTimeout: 15_000,
-    greetingTimeout: 15_000,
-    socketTimeout: 60_000,
+    connectionTimeout: 8_000,
+    greetingTimeout: 8_000,
+    socketTimeout: 30_000,
     auth: { user: cfg.user, pass: cfg.pass },
   });
 }
@@ -250,10 +276,15 @@ async function sendDxfEmail(opts) {
     attachments,
   };
 
-  // Prefer Resend HTTPS on Railway Hobby (SMTP is blocked there).
+  // Prefer Resend HTTPS (works on Railway Hobby — port 443).
   if (cfg.resendApiKey) {
     await sendViaResend(cfg, mail);
     return { sentTo: cfg.recipient, attachmentCount: attachments.length, via: 'resend' };
+  }
+
+  // Do not hang on blocked SMTP — Railway proxy then shows "Application failed to respond".
+  if (smtpLikelyBlocked()) {
+    throw missingResendOnRailwayError();
   }
 
   try {
@@ -280,6 +311,9 @@ async function verifySmtp() {
   const cfg = getConfig();
   if (cfg.resendApiKey) {
     return { ok: true, via: 'resend' };
+  }
+  if (smtpLikelyBlocked()) {
+    throw missingResendOnRailwayError();
   }
   const transport = await createTransport(cfg);
   await transport.verify();

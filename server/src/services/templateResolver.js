@@ -113,6 +113,8 @@ async function listProductSizes(productTypeCode = DEFAULT_PRODUCT_TYPE_CODE) {
             diameter_mm, export_scale_factor, sort_order, supports_verses
        FROM product_sizes
       WHERE product_type_code = $1
+        AND size_code IS DISTINCT FROM '16'
+        AND (diameter_mm IS NULL OR diameter_mm <= 15)
       ORDER BY sort_order, size_name`,
     [productTypeCode]
   );
