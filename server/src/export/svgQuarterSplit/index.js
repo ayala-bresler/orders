@@ -2,7 +2,8 @@
 
 const { DOMParser } = require('@xmldom/xmldom');
 const { readRootSvgMetrics } = require('../svgRootMetrics');
-const { analyzeQuarterMarkers } = require('./analyzeMarkers');
+const { analyzeQuarterMarkers, removeMarkerRects } = require('./analyzeMarkers');
+const { stripDxfAnnotations } = require('./stripDxfAnnotations');
 const { flattenSvgToPaths } = require('./flattenToPaths');
 const {
   SCALE_FACTOR,
@@ -16,6 +17,7 @@ const { splitIntoQuarters, QUARTER_DEFS } = require('./splitQuarters');
  * SVG → 4 quarter SVGs pipeline (steps 1–5):
  *
  * 1. analyzeQuarterMarkers  — read original <rect> markers; compute X_mid, Y_mid
+ * 1b.stripDxfAnnotations    — drop rings, corner labels, marker rects (laser DXF)
  * 2. flattenSvgToPaths      — text + shapes → polylines (paths kept, not removed)
  * 3. scalePaths             — multiply all coordinates + cut lines by SCALE_FACTOR
  * 4. splitIntoQuarters      — assign geometry per scaled quarter; origin at (0,0)
@@ -33,12 +35,16 @@ function splitSvgIntoQuarters(rawSvgString, options = {}) {
   const analysis = analyzeQuarterMarkers(doc);
   warnings.push(...analysis.warnings);
 
+  // Step 1b: remove annotations that must not appear in laser DXF
+  removeMarkerRects(analysis.rectNodes);
+  stripDxfAnnotations(doc);
+
   const { viewBox, width, height } = readRootSvgMetrics(doc);
   const vbParts = viewBox.split(/[\s,]+/).map(Number);
   const canvasWidth = vbParts.length === 4 ? vbParts[2] : Number(width);
   const canvasHeight = vbParts.length === 4 ? vbParts[3] : Number(height);
 
-  // Step 2: flatten to path polylines (marker rects included)
+  // Step 2: flatten to path polylines (rings / labels / markers already gone)
   const { paths: flatPaths, warnings: flattenWarnings } = flattenSvgToPaths(doc);
   warnings.push(...flattenWarnings);
 
@@ -84,4 +90,5 @@ module.exports = {
   splitIntoQuarters,
   SCALE_FACTOR,
   QUARTER_DEFS,
+  stripDxfAnnotations,
 };

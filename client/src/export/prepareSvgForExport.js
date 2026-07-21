@@ -5,6 +5,27 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const FONT_FAMILY = 'FbKidushPro';
 const FONT_URL = '/api/template/font';
 
+/** Corner orientation labels drawn on the template — not for laser DXF. */
+const CORNER_LABELS = new Set([
+  'ימין למעלה',
+  'שמאל למעלה',
+  'ימין למטה',
+  'שמאל למטה',
+]);
+
+function normalizeCornerLabel(text) {
+  return String(text || '')
+    .replace(/[\u200e\u200f\u202a-\u202e]/g, '')
+    .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isCornerLabelText(textEl) {
+  if (textEl.querySelector('textPath')) return false;
+  return CORNER_LABELS.has(normalizeCornerLabel(textEl.textContent));
+}
+
 let _fontPromise = null;
 let _fontFacePromise = null;
 
@@ -136,13 +157,44 @@ export async function prepareSvgForExport({ liveSvg, guidePathIds = [] } = {}) {
   const exportTexts = [...exportSvg.querySelectorAll('text')];
 
   for (let i = 0; i < liveTexts.length; i += 1) {
-    const paths = convertTextToPaths(liveTexts[i], font);
     const target = exportTexts[i];
     if (!target) continue;
+    // Drop orientation labels before they become glyph paths.
+    if (isCornerLabelText(liveTexts[i])) {
+      target.remove();
+      continue;
+    }
+    const paths = convertTextToPaths(liveTexts[i], font);
     if (paths) target.replaceWith(paths);
     else target.remove();
   }
 
+  // Rings / frames — not needed for laser DXF
+  for (const el of [
+    ...exportSvg.querySelectorAll('circle, ellipse'),
+  ]) {
+    el.remove();
+  }
+  // Stroked ring paths (e.g. size 9) that are not textPath guides
+  for (const path of [...exportSvg.querySelectorAll('path')]) {
+    const id = path.getAttribute('id');
+    if (id && guideSet.has(id)) continue;
+    const style = path.getAttribute('style') || '';
+    const fill = path.getAttribute('fill') || '';
+    const stroke = path.getAttribute('stroke') || '';
+    const fillNone =
+      /fill\s*:\s*none/i.test(style) || fill === 'none' || (!fill && !/fill\s*:/i.test(style));
+    const hasStroke =
+      (/stroke\s*:\s*(?!none\b)[^;]+/i.test(style) && !/stroke\s*:\s*none/i.test(style)) ||
+      (stroke && stroke !== 'none');
+    if (fillNone && hasStroke) path.remove();
+  }
+  // Tiny cut markers
+  for (const rect of [...exportSvg.querySelectorAll('rect')]) {
+    const w = Number(rect.getAttribute('width') || 0);
+    const h = Number(rect.getAttribute('height') || 0);
+    if (w > 0 && h > 0 && w <= 4 && h <= 4) rect.remove();
+  }
   for (const path of [...exportSvg.querySelectorAll('path[id]')]) {
     if (guideSet.has(path.getAttribute('id'))) path.remove();
   }

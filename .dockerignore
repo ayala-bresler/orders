@@ -39,7 +39,8 @@ saved
 !README.md
 agent-transcripts
 **/agent-tools
-**/assets
+# Cursor scratch media (do NOT ignore server/assets/model-images)
+.cursor/**/assets
 
 # Nested locks inside dependencies (safety)
 **/node_modules/**/package-lock.json

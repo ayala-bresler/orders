@@ -4,8 +4,8 @@ const { bakeTextToPaths } = require('../svgBakeText');
 const { extractSvgContent } = require('../svgExtract');
 
 /**
- * Step 2: bake text to outline paths, then flatten ellipses / rects / paths to polylines.
- * Marker rects are kept — they are assigned to their quarter during split.
+ * Step 2: bake verse text to outline paths, then flatten remaining shapes to polylines.
+ * Rings, corner labels, and marker rects are stripped earlier in splitSvgIntoQuarters.
  */
 function flattenSvgToPaths(doc) {
   const warnings = [...bakeTextToPaths(doc)];
