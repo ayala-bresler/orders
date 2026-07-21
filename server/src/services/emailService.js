@@ -1,6 +1,18 @@
 'use strict';
 
+const dns = require('dns');
+const net = require('net');
+const { promisify } = require('util');
 const nodemailer = require('nodemailer');
+
+const resolve4 = promisify(dns.resolve4);
+
+/** Prefer IPv4 for Node DNS helpers (Node 17+). */
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch {
+  /* older Node */
+}
 
 function getConfig() {
   const pass = (process.env.SMTP_PASS || '').replace(/\s+/g, '');
@@ -19,7 +31,41 @@ function isGmail(cfg) {
   return cfg.host.includes('gmail.com') || cfg.user.endsWith('@gmail.com');
 }
 
-function createTransport(cfg) {
+/**
+ * Resolve hostname to a concrete IPv4 address so the SMTP socket never tries IPv6
+ * (Railway and similar hosts often return ENETUNREACH for IPv6).
+ */
+async function resolveSmtpHost(hostname) {
+  if (!hostname) {
+    const err = new Error('SMTP_HOST חסר.');
+    err.status = 503;
+    throw err;
+  }
+  if (net.isIP(hostname) === 4) {
+    return { connectHost: hostname, servername: undefined };
+  }
+  if (net.isIP(hostname) === 6) {
+    const err = new Error('SMTP_HOST הוא IPv6 — יש להשתמש ב-hostname או בכתובת IPv4.');
+    err.status = 503;
+    throw err;
+  }
+  try {
+    const addresses = await resolve4(hostname);
+    if (!addresses.length) {
+      const err = new Error(`לא נמצאה כתובת IPv4 עבור ${hostname}`);
+      err.status = 503;
+      throw err;
+    }
+    return { connectHost: addresses[0], servername: hostname };
+  } catch (err) {
+    if (err.status) throw err;
+    const e = new Error(`רזולוציית IPv4 נכשלה עבור ${hostname}: ${err.message}`);
+    e.status = 503;
+    throw e;
+  }
+}
+
+async function createTransport(cfg) {
   if (!cfg.host || !cfg.user || !cfg.pass) {
     const err = new Error(
       'הגדרות SMTP חסרות. הוסיפו SMTP_HOST, SMTP_USER, SMTP_PASS בקובץ server/.env'
@@ -28,23 +74,24 @@ function createTransport(cfg) {
     throw err;
   }
 
-  /** Force IPv4 — avoids IPv6/ENETUNREACH issues on some hosts (Railway, etc.). */
-  const ipv4Only = { family: 4 };
+  // Do NOT use service:'gmail' — it ignores IPv4 forcing and may dial AAAA records.
+  const hostname =
+    isGmail(cfg) && !/gmail\.com$/i.test(cfg.host) ? 'smtp.gmail.com' : cfg.host;
+  const { connectHost, servername } = await resolveSmtpHost(hostname);
 
-  if (isGmail(cfg)) {
-    return nodemailer.createTransport({
-      service: 'gmail',
-      ...ipv4Only,
-      auth: { user: cfg.user, pass: cfg.pass },
-    });
-  }
+  const port = Number(cfg.port) || 587;
+  const secure = cfg.secure || port === 465;
 
   return nodemailer.createTransport({
-    host: cfg.host,
-    port: cfg.port,
-    secure: cfg.secure,
-    requireTLS: !cfg.secure,
-    ...ipv4Only,
+    host: connectHost,
+    port,
+    secure,
+    requireTLS: !secure,
+    // SNI / cert validation must use the original hostname, not the raw IPv4
+    tls: servername ? { servername } : undefined,
+    connectionTimeout: 20_000,
+    greetingTimeout: 20_000,
+    socketTimeout: 60_000,
     auth: { user: cfg.user, pass: cfg.pass },
   });
 }
@@ -90,7 +137,7 @@ async function sendDxfEmail(opts) {
     throw err;
   }
 
-  const transport = createTransport(cfg);
+  const transport = await createTransport(cfg);
   const {
     quarterFiles = [],
     pdfFilename,
@@ -136,7 +183,7 @@ async function sendDxfEmail(opts) {
 
 async function verifySmtp() {
   const cfg = getConfig();
-  const transport = createTransport(cfg);
+  const transport = await createTransport(cfg);
   await transport.verify();
   return { ok: true, user: cfg.user };
 }
