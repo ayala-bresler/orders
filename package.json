@@ -1,0 +1,15 @@
+{
+  "name": "hetz-haim-ordering-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Unified entry for Railway / local production start",
+  "scripts": {
+    "start": "npm --prefix server start",
+    "build": "npm --prefix client ci && npm --prefix client run build && node -e \"const fs=require('fs');const path=require('path');const src=path.join('client','dist');const dest=path.join('server','public');fs.rmSync(dest,{recursive:true,force:true});fs.cpSync(src,dest,{recursive:true});\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

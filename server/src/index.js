@@ -82,8 +82,8 @@ app.use((err, req, res, next) => {
   res.status(status).json(body);
 });
 
-const PORT = Number(process.env.PORT || 4100);
-/** Cloud Run / Docker require binding all interfaces; override with HOST if needed. */
+const PORT = Number(process.env.PORT || 3000);
+/** Railway / Docker / Cloud Run require binding all interfaces. */
 const HOST = process.env.HOST || '0.0.0.0';
 if (require.main === module) {
   const server = app.listen(PORT, HOST, () => {

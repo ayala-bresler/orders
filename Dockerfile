@@ -1,28 +1,19 @@
 # syntax=docker/dockerfile:1
 #
-# Google Cloud Run — unified Node image (Vite client + Express API)
+# Railway / container — unified Node image (Vite client + Express API)
 #
-# Cloud Run requirements this image meets:
-#   - Listens on 0.0.0.0 and honors $PORT (Cloud Run injects PORT, usually 8080)
-#   - HTTP only (TLS is terminated by Cloud Run)
+# Platform requirements this image meets:
+#   - Listens on 0.0.0.0 and honors $PORT (Railway / Cloud Run inject PORT at runtime)
+#   - HTTP only (TLS is terminated by the platform)
 #   - Non-root user
-#   - Ephemeral writes under /tmp (Cloud Run filesystem is not durable)
+#   - Ephemeral writes under /tmp
 #   - SIGTERM handled by the Node process (see server/src/index.js)
 #
 # Build (from repo root):
-#   docker build -t REGION-docker.pkg.dev/PROJECT/REPO/hetz-haim:latest .
+#   docker build -t hetz-haim .
 #
-# Deploy example:
-#   gcloud run deploy hetz-haim \
-#     --image REGION-docker.pkg.dev/PROJECT/REPO/hetz-haim:latest \
-#     --region REGION \
-#     --platform managed \
-#     --allow-unauthenticated \
-#     --port 8080 \
-#     --set-env-vars "NODE_ENV=production,PGHOST=...,PGDATABASE=..." \
-#     --set-secrets "PGPASSWORD=..."
-#
-# Startup / liveness probe path: GET /api/health
+# Railway: connect the GitHub repo; it will build this Dockerfile automatically.
+# Startup / health path: GET /api/health
 
 # -----------------------------------------------------------------------------
 # Stage 1 — build the React client
@@ -38,15 +29,15 @@ COPY client/ ./
 RUN npm run build
 
 # -----------------------------------------------------------------------------
-# Stage 2 — production runtime for Cloud Run
+# Stage 2 — production runtime
 # -----------------------------------------------------------------------------
 FROM node:20-bookworm-slim AS production
 
 WORKDIR /app
 
-# PORT is a default only — Cloud Run overrides it at runtime. Do not bake secrets.
+# PORT default only — Railway overrides $PORT at runtime. Do not bake secrets.
 ENV NODE_ENV=production \
-    PORT=8080 \
+    PORT=3000 \
     HOST=0.0.0.0 \
     STATIC_DIR=/app/public \
     STORAGE_DIR=/tmp/saved/orders \
@@ -66,7 +57,7 @@ RUN rm -f .env .env.local .env.*.local
 # Client build → static folder Express serves
 COPY --from=client-build /build/client/dist/ ./public/
 
-# Non-root user (Cloud Run-compatible) + writable ephemeral dirs
+# Non-root user + writable ephemeral dirs
 RUN mkdir -p /tmp/saved/orders /app/fonts \
   && groupadd --system --gid 1001 app \
   && useradd --system --uid 1001 --gid app --home-dir /app --shell /usr/sbin/nologin app \
@@ -74,8 +65,8 @@ RUN mkdir -p /tmp/saved/orders /app/fonts \
 
 USER app
 
-# Cloud Run default container port (runtime still uses $PORT)
-EXPOSE 8080
+# Document default port (runtime still uses process.env.PORT)
+EXPOSE 3000
 
-# Main entry: server/package.json → "main": "src/index.js"
+# Main entry — PORT is read dynamically in server/src/index.js
 CMD ["node", "src/index.js"]
