@@ -3,11 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "description": "XML/SVG personalization backend for the 'hetz-haim' ordering system",
-  "main": "src/index.js",
+  "main": "init.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "node --watch src/index.js",
+    "start": "node init.js",
+    "start:server-only": "node src/index.js",
+    "dev": "node --watch init.js",
     "db:schema": "node scripts/apply-schema.js",
+    "db:init": "node scripts/apply-schema.js",
     "db:seed": "node scripts/apply-seed.js",
     "verify": "node scripts/verify-svg.js",
     "split-quarters": "node scripts/split-svg-quarters.js"

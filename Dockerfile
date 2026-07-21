@@ -68,5 +68,5 @@ USER app
 # Document default port (runtime still uses process.env.PORT)
 EXPOSE 3000
 
-# Main entry — PORT is read dynamically in server/src/index.js
-CMD ["node", "src/index.js"]
+# Main entry — runs DB schema init, then starts the server (honors $PORT)
+CMD ["node", "init.js"]

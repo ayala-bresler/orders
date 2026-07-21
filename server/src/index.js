@@ -85,7 +85,8 @@ app.use((err, req, res, next) => {
 const PORT = Number(process.env.PORT || 3000);
 /** Railway / Docker / Cloud Run require binding all interfaces. */
 const HOST = process.env.HOST || '0.0.0.0';
-if (require.main === module) {
+
+function startServer() {
   const server = app.listen(PORT, HOST, () => {
     console.log(`[server] listening on http://${HOST}:${PORT}`);
   });
@@ -112,6 +113,13 @@ if (require.main === module) {
   };
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
+
+  return server;
+}
+
+if (require.main === module) {
+  startServer();
 }
 
 module.exports = app;
+module.exports.startServer = startServer;
