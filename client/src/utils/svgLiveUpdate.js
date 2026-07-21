@@ -130,7 +130,8 @@ export function clearSvgFitDimensions(svgRoot) {
 /** Zoom at or below this value: fit in viewport, no scrolling. Above: pan/scroll. */
 export const PREVIEW_SCROLL_ZOOM_THRESHOLD = 1;
 
-export const MOBILE_PREVIEW_DEFAULT_ZOOM = 1.6;
+/** Mobile preview starts at true 100% (no extra enlarge). */
+export const MOBILE_PREVIEW_DEFAULT_ZOOM = 1;
 export const DESKTOP_PREVIEW_DEFAULT_ZOOM = 1;
 export const MOBILE_LAYOUT_MQ = '(max-width: 899px)';
 

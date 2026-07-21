@@ -25,8 +25,13 @@ import {
 } from './utils/sessionAuth.js';
 import { closeAllLiveConnections } from './utils/liveConnections.js';
 import { useInactivityTimeout } from './utils/useInactivityTimeout.js';
+import { MOBILE_LAYOUT_MQ } from './utils/svgLiveUpdate.js';
 
 const STEPS = ['identify', 'product', 'details', 'editor'];
+
+/** Mobile shows only one pair at a time; cross-pair nav is via bottom back only. */
+const MOBILE_STEP_PAIR_EARLY = ['identify', 'product'];
+const MOBILE_STEP_PAIR_LATE = ['details', 'editor'];
 
 const STEP_LABELS = {
   identify: 'הזדהות',
@@ -35,9 +40,30 @@ const STEP_LABELS = {
   editor: 'פסוקים לעצי חיים',
 };
 
+function useMobileLayout() {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia(MOBILE_LAYOUT_MQ).matches : false
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(MOBILE_LAYOUT_MQ);
+    const sync = () => setIsMobile(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+  return isMobile;
+}
+
+function mobileStepPair(stepId) {
+  return MOBILE_STEP_PAIR_LATE.includes(stepId)
+    ? MOBILE_STEP_PAIR_LATE
+    : MOBILE_STEP_PAIR_EARLY;
+}
+
 const SESSION_REFRESH_THROTTLE_MS = 2 * 60 * 1000;
 
 export default function App() {
+  const isMobile = useMobileLayout();
   const [session, setSession] = useState(null);
   const [step, setStep] = useState('identify');
   const [activeItem, setActiveItem] = useState(null);
@@ -49,6 +75,8 @@ export default function App() {
   const [leaveDetailsOpen, setLeaveDetailsOpen] = useState(false);
   const [cancelDetailsOpen, setCancelDetailsOpen] = useState(false);
   const [cancelDetailsBusy, setCancelDetailsBusy] = useState(false);
+  /** Ask "delete item?" only for a freshly created item that was never edited. */
+  const [detailsMayPromptDelete, setDetailsMayPromptDelete] = useState(false);
   const detailsRef = useRef(null);
   const lastSessionRefreshRef = useRef(0);
 
@@ -190,6 +218,7 @@ export default function App() {
   const openVerseItem = async (item) => {
     if (!session?.order?.order_id || !item?.order_item_id) return;
     setActiveItem(item);
+    setDetailsMayPromptDelete(false);
     setFlash('');
     if (!item.supports_verses) {
       setStep('product');
@@ -231,6 +260,7 @@ export default function App() {
     setActiveItem(enriched);
     setItemSupportsVerses(true);
     setEditorTemplateKey('12:12');
+    setDetailsMayPromptDelete(true);
     setSession((s) =>
       s ? { ...s, items: [...(s.items || []), enriched] } : s
     );
@@ -262,16 +292,24 @@ export default function App() {
     const hasItems = session?.items && session.items.length > 0;
     setStep(hasItems ? 'resume' : 'product');
     setActiveItem(null);
+    setDetailsMayPromptDelete(false);
     setFlash('');
   };
 
   const requestCancelDetails = () => {
-    setCancelDetailsOpen(true);
+    // Only prompt delete for a brand-new item that still matches defaults.
+    const untouched = !detailsRef.current?.isDirty?.();
+    if (detailsMayPromptDelete && untouched) {
+      setCancelDetailsOpen(true);
+      return;
+    }
+    leaveDetailsWithoutDelete();
   };
 
   const leaveDetailsWithoutDelete = () => {
     if (cancelDetailsBusy) return;
     setCancelDetailsOpen(false);
+    setDetailsMayPromptDelete(false);
     backToProducts();
   };
 
@@ -289,6 +327,7 @@ export default function App() {
       );
       setSession((s) => (s ? { ...s, items: nextItems } : s));
       setActiveItem(null);
+      setDetailsMayPromptDelete(false);
       setCancelDetailsOpen(false);
       setStep(nextItems.length > 0 ? 'resume' : 'product');
       setFlash('');
@@ -329,12 +368,14 @@ export default function App() {
 
   const goToDetails = () => {
     if (activeItem) {
+      setDetailsMayPromptDelete(false);
       setStep('details');
       setFlash('');
     }
   };
 
   const goToEditor = async (templateKey) => {
+    setDetailsMayPromptDelete(false);
     if (!activeItem || !itemSupportsVerses) return;
     if (templateKey) {
       setEditorTemplateKey(String(templateKey));
@@ -374,6 +415,7 @@ export default function App() {
   };
 
   const currentStepId = step === 'resume' ? 'product' : step;
+  const visibleSteps = isMobile ? mobileStepPair(currentStepId) : STEPS;
   const headerMode =
     !session || step === 'identify'
       ? 'identify'
@@ -381,7 +423,12 @@ export default function App() {
         ? 'side'
         : 'center';
   const showCustomerInHeader = headerMode === 'side' && Boolean(session);
+  /** On mobile identify: still show the early step pair (no logo header). */
+  const showAppTop = headerMode !== 'identify' || isMobile;
+  const showSiteHeader = headerMode !== 'identify';
+  const showStepsNav = Boolean(session) || (isMobile && headerMode === 'identify');
   const stepClickable = (s) => {
+    if (isMobile && !visibleSteps.includes(s)) return false;
     if (s === 'identify') return true;
     if (s === 'product') return Boolean(session);
     if (s === 'details') return Boolean(activeItem);
@@ -391,6 +438,8 @@ export default function App() {
 
   const goToStep = (s) => {
     if (s === currentStepId) return;
+    // Mobile: no jumping between early/late pairs via tabs — use bottom back.
+    if (isMobile && !visibleSteps.includes(s)) return;
     if (currentStepId === 'details' && s === 'editor') {
       if (!itemSupportsVerses) return;
       if (detailsRef.current?.isDirty?.()) {
@@ -447,29 +496,31 @@ export default function App() {
 
   return (
     <div className="app" dir="rtl">
-      {headerMode !== 'identify' && (
-        <div className={`app-top app-top--${headerMode}`}>
-          <header className={`site-header site-header--${headerMode}`}>
-            <img
-              className="site-logo"
-              src="/img-judaica-logo.png?v=2"
-              alt="IMG JUDAICA LTD — אי אמ ג'י יודאיקה בע״מ"
-            />
-            {showCustomerInHeader ? (
-              <div className="site-header-copy">
-                <div className="session-info">
-                  <span className="session-greeting">היי {session.customer.full_name}!</span>
-                  <span className="session-phone">{session.customer.phone}</span>
-                  <span className="session-order">הזמנה #{session.order.order_id}</span>
+      {showAppTop && (
+        <div className={`app-top app-top--${headerMode}${isMobile ? ' app-top--mobile' : ''}`}>
+          {showSiteHeader ? (
+            <header className={`site-header site-header--${headerMode}`}>
+              <img
+                className="site-logo"
+                src="/img-judaica-logo.png?v=2"
+                alt="IMG JUDAICA LTD — אי אמ ג'י יודאיקה בע״מ"
+              />
+              {showCustomerInHeader ? (
+                <div className="site-header-copy">
+                  <div className="session-info">
+                    <span className="session-greeting">היי {session.customer.full_name}!</span>
+                    <span className="session-phone">{session.customer.phone}</span>
+                    <span className="session-order">הזמנה #{session.order.order_id}</span>
+                  </div>
                 </div>
-              </div>
-            ) : null}
-          </header>
+              ) : null}
+            </header>
+          ) : null}
 
-          {session && (
+          {showStepsNav && (
             <nav className="steps" aria-label="שלבי הזמנה">
-              <div className="steps-buttons">
-                {STEPS.map((s) => {
+              <div className={`steps-buttons${isMobile ? ' steps-buttons--pair' : ''}`}>
+                {visibleSteps.map((s) => {
                   const unavailable = s === 'editor' && activeItem && !itemSupportsVerses;
                   return (
                     <button
@@ -580,6 +631,9 @@ export default function App() {
             onContinueToVerses={goToEditor}
             onFinishWithoutVerses={handleOrderComplete}
             onSupportsVersesChange={setItemSupportsVerses}
+            onDirtyChange={(dirty) => {
+              if (dirty) setDetailsMayPromptDelete(false);
+            }}
             onCancel={requestCancelDetails}
           />
         )}
