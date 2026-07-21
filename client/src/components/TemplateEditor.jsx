@@ -5,6 +5,7 @@ import DynamicSvgForm from './DynamicSvgForm.jsx';
 
 import {
   fetchTemplate,
+  fetchTemplatePreview,
   fetchOrderItemVerses,
   fetchOrderItemDetails,
   saveOrderItemVerses,
@@ -26,13 +27,21 @@ import {
   adjustLetterSpacing,
   LETTER_SPACING_STEP_EM,
 } from '../utils/verseStyles.js';
-import { prepareSvgForExport } from '../export/prepareSvgForExport.js';
 import { IconBack, IconPrint, IconReset, IconSave, IconUndo } from './Icons.jsx';
+
+function bakeSignature(values, fontScales) {
+  return JSON.stringify({ values, fontScales });
+}
 
 export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, onOrderComplete }) {
   const canvasRef = useRef(null);
+  const bakeReqIdRef = useRef(0);
+  const bakedSvgRef = useRef('');
+  const bakeSigRef = useRef('');
 
   const [masterSvg, setMasterSvg] = useState('');
+  /** Last server-baked SVG (correct ring text centering). Kept while the next bake runs. */
+  const [bakedSvg, setBakedSvg] = useState('');
   const [fields, setFields] = useState([]);
   const [defaults, setDefaults] = useState({});
   const [maxVerseLength, setMaxVerseLength] = useState(350);
@@ -111,6 +120,9 @@ export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, on
         }
 
         setMasterSvg(tpl.svg || '');
+        setBakedSvg('');
+        bakedSvgRef.current = '';
+        bakeSigRef.current = '';
         setFields(discovered);
         setDefaults(defaultMap);
         setMaxVerseLength(tpl.maxVerseLength || 350);
@@ -130,6 +142,35 @@ export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, on
       alive = false;
     };
   }, [orderId, itemId]);
+
+  // Server bake after edits — keep previous bake on screen (no "מכינים תצוגה").
+  useEffect(() => {
+    if (status !== 'ready' || !fields.length) return undefined;
+
+    const reqId = ++bakeReqIdRef.current;
+    const sig = bakeSignature(values, fontScales);
+    const delay = bakedSvgRef.current ? 220 : 0;
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await fetchTemplatePreview(values, fontScales, {
+          orderId,
+          orderItemId: itemId,
+          bake: true,
+        });
+        if (bakeReqIdRef.current !== reqId) return;
+        if (res?.svg) {
+          bakedSvgRef.current = res.svg;
+          bakeSigRef.current = sig;
+          setBakedSvg(res.svg);
+        }
+      } catch {
+        /* keep last baked file */
+      }
+    }, delay);
+
+    return () => window.clearTimeout(timer);
+  }, [status, fields, values, fontScales, orderId, itemId]);
 
   const isDirty = useMemo(() => {
     const textDirty = fields.some(
@@ -192,19 +233,28 @@ export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, on
   };
 
   const handlePrint = () => {
-    // Print the live preview SVG as currently shown (cleared fit sizing via beforeprint).
+    // Prints the stored server-baked SVG currently on screen.
     window.print();
   };
 
-  const buildPreparedSvgForExport = async () => {
-    const liveSvg = canvasRef.current?.getSvgRoot?.();
-    if (!liveSvg) {
-      throw new Error('אין תצוגה מקדימה לייצוא. נסו שוב בעוד רגע.');
+  /** Ensure we have a bake matching the given (or current) values — reuse cache when possible. */
+  const ensureBakedSvg = async (nextValues = values, nextScales = fontScales) => {
+    const sig = bakeSignature(nextValues, nextScales);
+    if (bakedSvgRef.current && bakeSigRef.current === sig) {
+      return bakedSvgRef.current;
     }
-    const guidePathIds = fields
-      .map((f) => String(f.href || '').replace(/^#/, ''))
-      .filter(Boolean);
-    return prepareSvgForExport({ liveSvg, guidePathIds });
+    const res = await fetchTemplatePreview(nextValues, nextScales, {
+      orderId,
+      orderItemId: itemId,
+      bake: true,
+    });
+    if (!res?.svg) {
+      throw new Error('לא התקבל קובץ תצוגה מהשרת.');
+    }
+    bakedSvgRef.current = res.svg;
+    bakeSigRef.current = sig;
+    setBakedSvg(res.svg);
+    return res.svg;
   };
 
   const handleFinishOrder = async () => {
@@ -217,18 +267,22 @@ export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, on
     setError('');
 
     try {
+      let exportValues = values;
+      let exportScales = fontScales;
+
       if (isDirty) {
         const saveRes = await saveOrderItemVerses(orderId, itemId, values, fontScales);
-        setSavedValues({ ...defaults, ...saveRes.values });
-        setValues({ ...defaults, ...saveRes.values });
-        const savedScales = saveRes.fontScales || {};
-        setSavedFontScales(savedScales);
-        setFontScales(savedScales);
+        exportValues = { ...defaults, ...saveRes.values };
+        exportScales = saveRes.fontScales || {};
+        setSavedValues(exportValues);
+        setValues(exportValues);
+        setSavedFontScales(exportScales);
+        setFontScales(exportScales);
         setSaveAcknowledged(true);
       }
 
-      // WYSIWYG: same live SVG layout as on-screen preview → DXF email
-      const preparedSvg = await buildPreparedSvgForExport();
+      // Reuse the server-baked SVG already shown (or bake once if still catching up).
+      const preparedSvg = await ensureBakedSvg(exportValues, exportScales);
       const emailRes = await emailOrderItemDxf(orderId, itemId, { preparedSvg });
       setOrderCompleted(true);
 
@@ -355,13 +409,13 @@ export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, on
                 : ' preview-viewport--fit'
             }`}
           >
-            {masterSvg ? (
+            {bakedSvg || masterSvg ? (
               <LiveSvgCanvas
                 ref={canvasRef}
-                masterSvg={masterSvg}
-                fields={fields}
-                values={values}
-                fontScales={fontScales}
+                masterSvg={bakedSvg || masterSvg}
+                fields={bakedSvg ? [] : fields}
+                values={bakedSvg ? {} : values}
+                fontScales={bakedSvg ? {} : fontScales}
                 zoom={previewZoom}
                 cropPreview
               />
