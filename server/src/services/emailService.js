@@ -1,5 +1,14 @@
 'use strict';
 
+/**
+ * Email delivery for DXF/PDF exports.
+ *
+ * Railway Free/Hobby blocks outbound SMTP (25/465/587) → use RESEND_API_KEY (HTTPS).
+ * Local / Railway Pro can still use classic SMTP (Gmail App Password, etc.).
+ *
+ * @see https://docs.railway.com/networking/outbound-networking
+ */
+
 const dns = require('dns');
 const net = require('net');
 const { promisify } = require('util');
@@ -7,7 +16,6 @@ const nodemailer = require('nodemailer');
 
 const resolve4 = promisify(dns.resolve4);
 
-/** Prefer IPv4 for Node DNS helpers (Node 17+). */
 try {
   dns.setDefaultResultOrder('ipv4first');
 } catch {
@@ -22,8 +30,14 @@ function getConfig() {
     secure: process.env.SMTP_SECURE === 'true',
     user: (process.env.SMTP_USER || '').trim(),
     pass,
-    from: (process.env.SMTP_FROM || process.env.SMTP_USER || '').trim(),
+    from: (
+      process.env.SMTP_FROM ||
+      process.env.RESEND_FROM ||
+      process.env.SMTP_USER ||
+      ''
+    ).trim(),
     recipient: (process.env.DXF_RECIPIENT_EMAIL || '').trim(),
+    resendApiKey: (process.env.RESEND_API_KEY || '').trim(),
   };
 }
 
@@ -31,10 +45,6 @@ function isGmail(cfg) {
   return cfg.host.includes('gmail.com') || cfg.user.endsWith('@gmail.com');
 }
 
-/**
- * Resolve hostname to a concrete IPv4 address so the SMTP socket never tries IPv6
- * (Railway and similar hosts often return ENETUNREACH for IPv6).
- */
 async function resolveSmtpHost(hostname) {
   if (!hostname) {
     const err = new Error('SMTP_HOST חסר.');
@@ -68,13 +78,13 @@ async function resolveSmtpHost(hostname) {
 async function createTransport(cfg) {
   if (!cfg.host || !cfg.user || !cfg.pass) {
     const err = new Error(
-      'הגדרות SMTP חסרות. הוסיפו SMTP_HOST, SMTP_USER, SMTP_PASS בקובץ server/.env'
+      'הגדרות שליחת מייל חסרות. ב-Railway (Hobby) הגדירו RESEND_API_KEY, ' +
+        'או מקומית: SMTP_HOST, SMTP_USER, SMTP_PASS.'
     );
     err.status = 503;
     throw err;
   }
 
-  // Do NOT use service:'gmail' — it ignores IPv4 forcing and may dial AAAA records.
   const hostname =
     isGmail(cfg) && !/gmail\.com$/i.test(cfg.host) ? 'smtp.gmail.com' : cfg.host;
   const { connectHost, servername } = await resolveSmtpHost(hostname);
@@ -87,13 +97,64 @@ async function createTransport(cfg) {
     port,
     secure,
     requireTLS: !secure,
-    // SNI / cert validation must use the original hostname, not the raw IPv4
     tls: servername ? { servername } : undefined,
-    connectionTimeout: 20_000,
-    greetingTimeout: 20_000,
+    connectionTimeout: 15_000,
+    greetingTimeout: 15_000,
     socketTimeout: 60_000,
     auth: { user: cfg.user, pass: cfg.pass },
   });
+}
+
+function toBase64(content) {
+  if (Buffer.isBuffer(content)) return content.toString('base64');
+  return Buffer.from(content).toString('base64');
+}
+
+/**
+ * Send via Resend HTTPS API (works on Railway Hobby — port 443).
+ * https://resend.com/docs/api-reference/emails/send-email
+ */
+async function sendViaResend(cfg, { from, to, subject, text, attachments }) {
+  if (!cfg.resendApiKey) {
+    const err = new Error('RESEND_API_KEY חסר.');
+    err.status = 503;
+    throw err;
+  }
+  if (!from) {
+    const err = new Error(
+      'חסרה כתובת שולח. הגדירו RESEND_FROM או SMTP_FROM (דומיין מאומת ב-Resend, ' +
+        'או לבדיקה: onboarding@resend.dev).'
+    );
+    err.status = 503;
+    throw err;
+  }
+
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${cfg.resendApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from,
+      to: [to],
+      subject,
+      text,
+      attachments: (attachments || []).map((a) => ({
+        filename: a.filename,
+        content: toBase64(a.content),
+      })),
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail = data.message || data.error || `Resend HTTP ${res.status}`;
+    const err = new Error(`שליחת מייל דרך Resend נכשלה: ${detail}`);
+    err.status = 503;
+    throw err;
+  }
+  return data;
 }
 
 function authError(err) {
@@ -106,6 +167,26 @@ function authError(err) {
     return e;
   }
   return err;
+}
+
+function smtpTimeoutError(err) {
+  const msg = String(err && err.message ? err.message : err);
+  const code = err && err.code;
+  const isTimeout =
+    code === 'ETIMEDOUT' ||
+    code === 'ESOCKET' ||
+    /timeout|timed out|connection timeout/i.test(msg);
+  if (!isTimeout) return null;
+
+  const e = new Error(
+    'שליחת מייל נכשלה: Connection timeout. ' +
+      'ב-Railway (תוכניות Free/Hobby) פורטי SMTP (25/465/587) חסומים. ' +
+      'הגדירו RESEND_API_KEY + RESEND_FROM (שליחה ב-HTTPS), ' +
+      'או שדרגו ל-Pro ואז redeploy. ' +
+      'ראו: https://docs.railway.com/networking/outbound-networking'
+  );
+  e.status = 503;
+  return e;
 }
 
 function buildEmailText(meta = {}) {
@@ -124,25 +205,11 @@ function buildEmailSubject(meta = {}) {
   return parts.length ? parts.join(' · ') : 'ייצוא הזמנה';
 }
 
-/**
- * Send quarter DXF exports (and optional PDF) to the configured mailbox.
- */
-async function sendDxfEmail(opts) {
-  const cfg = getConfig();
-  if (!cfg.recipient) {
-    const err = new Error(
-      'לא הוגדר כתובת מייל לקבלת DXF. הוסיפו DXF_RECIPIENT_EMAIL בקובץ server/.env'
-    );
-    err.status = 503;
-    throw err;
-  }
-
-  const transport = await createTransport(cfg);
+function buildAttachments(opts) {
   const {
     quarterFiles = [],
     pdfFilename,
     pdfContent,
-    meta = {},
   } = opts;
 
   const attachments = quarterFiles.map((file) => ({
@@ -158,16 +225,44 @@ async function sendDxfEmail(opts) {
       contentType: 'application/pdf',
     });
   }
+  return attachments;
+}
+
+/**
+ * Send quarter DXF exports (and optional PDF) to the configured mailbox.
+ */
+async function sendDxfEmail(opts) {
+  const cfg = getConfig();
+  if (!cfg.recipient) {
+    const err = new Error(
+      'לא הוגדר כתובת מייל לקבלת DXF. הוסיפו DXF_RECIPIENT_EMAIL בקובץ server/.env'
+    );
+    err.status = 503;
+    throw err;
+  }
+
+  const attachments = buildAttachments(opts);
+  const mail = {
+    from: cfg.from,
+    to: cfg.recipient,
+    subject: buildEmailSubject(opts.meta || {}),
+    text: buildEmailText(opts.meta || {}),
+    attachments,
+  };
+
+  // Prefer Resend HTTPS on Railway Hobby (SMTP is blocked there).
+  if (cfg.resendApiKey) {
+    await sendViaResend(cfg, mail);
+    return { sentTo: cfg.recipient, attachmentCount: attachments.length, via: 'resend' };
+  }
 
   try {
-    await transport.sendMail({
-      from: cfg.from,
-      to: cfg.recipient,
-      subject: buildEmailSubject(meta),
-      text: buildEmailText(meta),
-      attachments,
-    });
+    const transport = await createTransport(cfg);
+    await transport.sendMail(mail);
   } catch (err) {
+    const timeoutErr = smtpTimeoutError(err);
+    if (timeoutErr) throw timeoutErr;
+
     const wrapped = authError(err);
     if (!wrapped.status) wrapped.status = 503;
     if (wrapped === err) {
@@ -178,14 +273,17 @@ async function sendDxfEmail(opts) {
     throw wrapped;
   }
 
-  return { sentTo: cfg.recipient, attachmentCount: attachments.length };
+  return { sentTo: cfg.recipient, attachmentCount: attachments.length, via: 'smtp' };
 }
 
 async function verifySmtp() {
   const cfg = getConfig();
+  if (cfg.resendApiKey) {
+    return { ok: true, via: 'resend' };
+  }
   const transport = await createTransport(cfg);
   await transport.verify();
-  return { ok: true, user: cfg.user };
+  return { ok: true, user: cfg.user, via: 'smtp' };
 }
 
 module.exports = {
