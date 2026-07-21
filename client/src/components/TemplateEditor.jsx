@@ -5,7 +5,6 @@ import DynamicSvgForm from './DynamicSvgForm.jsx';
 
 import {
   fetchTemplate,
-  fetchTemplatePreview,
   fetchOrderItemVerses,
   fetchOrderItemDetails,
   saveOrderItemVerses,
@@ -27,15 +26,13 @@ import {
   adjustLetterSpacing,
   LETTER_SPACING_STEP_EM,
 } from '../utils/verseStyles.js';
+import { prepareSvgForExport } from '../export/prepareSvgForExport.js';
 import { IconBack, IconPrint, IconReset, IconSave, IconUndo } from './Icons.jsx';
 
 export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, onOrderComplete }) {
   const canvasRef = useRef(null);
 
   const [masterSvg, setMasterSvg] = useState('');
-  /** Server-baked preview (text→paths) — exact ring centering like DXF. */
-  const [previewSvg, setPreviewSvg] = useState('');
-  const [previewReady, setPreviewReady] = useState(false);
   const [fields, setFields] = useState([]);
   const [defaults, setDefaults] = useState({});
   const [maxVerseLength, setMaxVerseLength] = useState(350);
@@ -54,8 +51,6 @@ export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, on
   const [orderCompleted, setOrderCompleted] = useState(false);
   const [previewZoom, setPreviewZoom] = useState(getDefaultPreviewZoom);
   const [defaultPreviewZoom, setDefaultPreviewZoom] = useState(getDefaultPreviewZoom);
-  const previewBakeReqId = useRef(0);
-  const hasBakedPreviewRef = useRef(false);
 
   useEffect(() => {
     const mq = window.matchMedia(MOBILE_LAYOUT_MQ);
@@ -116,9 +111,6 @@ export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, on
         }
 
         setMasterSvg(tpl.svg || '');
-        setPreviewSvg('');
-        setPreviewReady(false);
-        hasBakedPreviewRef.current = false;
         setFields(discovered);
         setDefaults(defaultMap);
         setMaxVerseLength(tpl.maxVerseLength || 350);
@@ -138,34 +130,6 @@ export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, on
       alive = false;
     };
   }, [orderId, itemId]);
-
-  // Baked preview only — exact ring centering (same as DXF). Keep prior bake until next arrives.
-  useEffect(() => {
-    if (status !== 'ready' || !fields.length) return undefined;
-
-    const reqId = ++previewBakeReqId.current;
-    const delay = hasBakedPreviewRef.current ? 200 : 0;
-
-    const timer = window.setTimeout(async () => {
-      try {
-        const res = await fetchTemplatePreview(values, fontScales, {
-          orderId,
-          orderItemId: itemId,
-          bake: true,
-        });
-        if (previewBakeReqId.current !== reqId) return;
-        if (res?.svg) {
-          hasBakedPreviewRef.current = true;
-          setPreviewSvg(res.svg);
-          setPreviewReady(true);
-        }
-      } catch {
-        /* keep last baked preview */
-      }
-    }, delay);
-
-    return () => window.clearTimeout(timer);
-  }, [status, fields, values, fontScales, orderId, itemId]);
 
   const isDirty = useMemo(() => {
     const textDirty = fields.some(
@@ -227,7 +191,21 @@ export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, on
     setFontScales(savedFontScales);
   };
 
-  const handlePrint = () => window.print();
+  const handlePrint = () => {
+    // Print the live preview SVG as currently shown (cleared fit sizing via beforeprint).
+    window.print();
+  };
+
+  const buildPreparedSvgForExport = async () => {
+    const liveSvg = canvasRef.current?.getSvgRoot?.();
+    if (!liveSvg) {
+      throw new Error('אין תצוגה מקדימה לייצוא. נסו שוב בעוד רגע.');
+    }
+    const guidePathIds = fields
+      .map((f) => String(f.href || '').replace(/^#/, ''))
+      .filter(Boolean);
+    return prepareSvgForExport({ liveSvg, guidePathIds });
+  };
 
   const handleFinishOrder = async () => {
     if (!orderId || !itemId) {
@@ -249,7 +227,9 @@ export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, on
         setSaveAcknowledged(true);
       }
 
-      const emailRes = await emailOrderItemDxf(orderId, itemId, values, fontScales);
+      // WYSIWYG: same live SVG layout as on-screen preview → DXF email
+      const preparedSvg = await buildPreparedSvgForExport();
+      const emailRes = await emailOrderItemDxf(orderId, itemId, { preparedSvg });
       setOrderCompleted(true);
 
       if (emailRes.warnings && emailRes.warnings.length) {
@@ -375,19 +355,19 @@ export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, on
                 : ' preview-viewport--fit'
             }`}
           >
-            {previewReady && previewSvg ? (
+            {masterSvg ? (
               <LiveSvgCanvas
                 ref={canvasRef}
-                masterSvg={previewSvg}
-                fields={[]}
-                values={{}}
-                fontScales={{}}
+                masterSvg={masterSvg}
+                fields={fields}
+                values={values}
+                fontScales={fontScales}
                 zoom={previewZoom}
                 cropPreview
               />
             ) : (
               <div className="notice" aria-live="polite">
-                מכינים תצוגה…
+                טוען תצוגה…
               </div>
             )}
           </div>
