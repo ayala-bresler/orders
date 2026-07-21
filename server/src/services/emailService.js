@@ -28,9 +28,13 @@ function createTransport(cfg) {
     throw err;
   }
 
+  /** Force IPv4 — avoids IPv6/ENETUNREACH issues on some hosts (Railway, etc.). */
+  const ipv4Only = { family: 4 };
+
   if (isGmail(cfg)) {
     return nodemailer.createTransport({
       service: 'gmail',
+      ...ipv4Only,
       auth: { user: cfg.user, pass: cfg.pass },
     });
   }
@@ -40,6 +44,7 @@ function createTransport(cfg) {
     port: cfg.port,
     secure: cfg.secure,
     requireTLS: !cfg.secure,
+    ...ipv4Only,
     auth: { user: cfg.user, pass: cfg.pass },
   });
 }
