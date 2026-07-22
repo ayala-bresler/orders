@@ -76,15 +76,23 @@ function buildTemplateContext({
   exportScaleFactor = null,
   sizeName = null,
 }) {
+  const {
+    applyCanonicalDefaultsToFields,
+    prepareTemplateSvgString,
+  } = require('../utils/canonicalVerses');
+
   const discovered = discoverSvgTextFields(svgRaw, LEGACY_FIELDS);
-  const fields = enrichDiscoveredFields(discovered, svgRaw);
+  let fields = enrichDiscoveredFields(discovered, svgRaw);
+  fields = applyCanonicalDefaultsToFields(fields);
+  // Runtime only: canonical 11–15 verses (size SVG files / rotates unchanged on disk).
+  const preparedSvg = prepareTemplateSvgString(svgRaw, fields);
   const maps = buildFieldMaps(fields);
-  const meta = analyzeSvgTemplate(svgRaw, fields);
+  const meta = analyzeSvgTemplate(preparedSvg, fields);
 
   return {
     id: sizeCode ? `${productTypeCode}-${sizeCode}` : 'default',
     svgPath,
-    svgRaw,
+    svgRaw: preparedSvg,
     sizeCode,
     productTypeCode,
     sizeName,

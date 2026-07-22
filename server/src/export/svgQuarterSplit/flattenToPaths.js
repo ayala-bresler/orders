@@ -5,7 +5,7 @@ const { extractSvgContent } = require('../svgExtract');
 
 /**
  * Step 2: bake verse text to outline paths, then flatten remaining shapes to polylines.
- * Rings, corner labels, and marker rects are stripped earlier in splitSvgIntoQuarters.
+ * Big rings and orientation labels are stripped earlier; all <rect> markers remain.
  */
 function flattenSvgToPaths(doc) {
   const warnings = [...bakeTextToPaths(doc)];

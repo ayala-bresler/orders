@@ -186,9 +186,26 @@ async function exportCustomDxf(orderId, orderItemId, values, fontScales) {
   return renderAndExport(orderId, orderItemId, values, fontScales || {});
 }
 
-/** Client-prepared SVG (browser text layout baked to paths) → 4 quarter DXFs. */
-function exportFromPreparedSvg(orderId, orderItemId, preparedSvgString) {
-  return exportQuartersFromRawSvg(preparedSvgString, { orderId, orderItemId });
+/**
+ * Client-prepared SVG (already path-baked) → 4 quarter DXFs.
+ * Prefer exportCustomDxf(values) when labels must still be stripped as live <text>.
+ */
+async function exportFromPreparedSvg(orderId, orderItemId, preparedSvgString) {
+  let scaleFactor;
+  try {
+    const templateContext = await templateResolver.resolveTemplate({
+      orderId,
+      orderItemId,
+    });
+    scaleFactor = templateContext.exportScaleFactor;
+  } catch {
+    /* fall back to default SCALE_FACTOR inside split */
+  }
+  return exportQuartersFromRawSvg(preparedSvgString, {
+    orderId,
+    orderItemId,
+    scaleFactor,
+  });
 }
 
 module.exports = {

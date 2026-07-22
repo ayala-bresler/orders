@@ -281,9 +281,19 @@ export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, on
         setSaveAcknowledged(true);
       }
 
-      // Reuse the server-baked SVG already shown (or bake once if still catching up).
-      const preparedSvg = await ensureBakedSvg(exportValues, exportScales);
-      const emailRes = await emailOrderItemDxf(orderId, itemId, { preparedSvg });
+      // Keep on-screen bake in sync for print; DXF email uses values so the server
+      // can strip orientation labels/rings before bake (preparedSvg already has them as glyphs).
+      try {
+        await ensureBakedSvg(exportValues, exportScales);
+      } catch {
+        /* display bake is best-effort; export still proceeds from values */
+      }
+      const emailRes = await emailOrderItemDxf(
+        orderId,
+        itemId,
+        exportValues,
+        exportScales
+      );
       setOrderCompleted(true);
 
       if (emailRes.warnings && emailRes.warnings.length) {
@@ -329,6 +339,12 @@ export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, on
   if (status === 'error') return <div className="notice error">שגיאה: {error}</div>;
 
   const plateDiameterLabel = formatPlateDiameterDisplay(meta?.plate_diameter);
+
+  // While values/styles differ from the last bake, show live SVG so font-size
+  // and spacing update immediately; swap back to baked when the server catches up.
+  const currentBakeSig = bakeSignature(values, fontScales);
+  const showBakedPreview = Boolean(bakedSvg && bakeSigRef.current === currentBakeSig);
+  const previewSvg = showBakedPreview ? bakedSvg : masterSvg;
 
   return (
     <div className="verse-page">
@@ -409,13 +425,13 @@ export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, on
                 : ' preview-viewport--fit'
             }`}
           >
-            {bakedSvg || masterSvg ? (
+            {previewSvg ? (
               <LiveSvgCanvas
                 ref={canvasRef}
-                masterSvg={bakedSvg || masterSvg}
-                fields={bakedSvg ? [] : fields}
-                values={bakedSvg ? {} : values}
-                fontScales={bakedSvg ? {} : fontScales}
+                masterSvg={previewSvg}
+                fields={showBakedPreview ? [] : fields}
+                values={showBakedPreview ? {} : values}
+                fontScales={showBakedPreview ? {} : fontScales}
                 zoom={previewZoom}
                 cropPreview
               />

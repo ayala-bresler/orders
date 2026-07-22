@@ -1,9 +1,15 @@
 'use strict';
 
 /**
- * Strip laser-irrelevant annotations from the SVG DOM before flatten → DXF.
- * Removes: outer/inner rings (circle/ellipse + stroked ring paths),
- * corner labels (e.g. "ימין למעלה"), after markers were already analyzed.
+ * Strip laser-irrelevant annotations from the full SVG before flatten → DXF.
+ *
+ * Remove:
+ *   - large ring shapes: <circle>, <ellipse>, stroked ring <path>s (not textPath guides)
+ *   - orientation labels only: ימין למעלה / שמאל למעלה / ימין למטה / שמאל למטה
+ *
+ * Keep:
+ *   - all <rect> markers
+ *   - all circular verse text on <textPath>
  */
 
 const { TEMPLATE } = require('../templateRegistry');
@@ -18,10 +24,15 @@ function normalizeLabel(text) {
     .trim();
 }
 
+/** Orientation labels drawn in the medallion center — not verse textPath content. */
 const CORNER_LABELS = new Set(
   [
     ...Object.values(VERSE_CORNER_LABELS),
     ...QUARTER_DEFS.map((d) => d.label),
+    'ימין למעלה',
+    'שמאל למעלה',
+    'ימין למטה',
+    'שמאל למטה',
   ].map(normalizeLabel)
 );
 
@@ -113,48 +124,64 @@ function isStrokedRingPath(node, textPathTargetIds) {
   return d.length > 80;
 }
 
-function collectRemovable(root, textPathTargetIds, out = []) {
+function walkCollect(root, visit, out = []) {
   if (!root || root.nodeType !== 1) return out;
-  const tag = root.tagName && root.tagName.toLowerCase();
-
-  if (tag === 'circle' || tag === 'ellipse') {
-    out.push(root);
-  } else if (tag === 'text' && !hasTextPathChild(root)) {
-    const label = normalizeLabel(plainTextContent(root));
-    if (label && CORNER_LABELS.has(label)) out.push(root);
-  } else if (isStrokedRingPath(root, textPathTargetIds)) {
-    out.push(root);
-  }
-
-  // Snapshot children — we may remove descendants later.
+  visit(root, out);
   const kids = [];
   for (let i = 0; i < root.childNodes.length; i += 1) {
     kids.push(root.childNodes.item(i));
   }
-  for (const kid of kids) {
-    collectRemovable(kid, textPathTargetIds, out);
-  }
+  for (const kid of kids) walkCollect(kid, visit, out);
   return out;
 }
 
-/**
- * Mutates `doc` in place. Call after analyzeQuarterMarkers / removeMarkerRects,
- * before flattenSvgToPaths / bakeTextToPaths.
- */
-function stripDxfAnnotations(doc) {
-  const root = doc.documentElement;
-  if (!root) return { removed: 0 };
-
-  const textPathTargetIds = collectTextPathTargetIds(root);
-  const nodes = collectRemovable(root, textPathTargetIds);
+function removeNodes(nodes) {
   for (const node of nodes) {
     if (node.parentNode) node.parentNode.removeChild(node);
   }
-  return { removed: nodes.length };
+  return nodes.length;
+}
+
+/** Remove orientation <text> (not textPath verses). Call before bake so labels never become glyph paths. */
+function stripOrientationLabels(doc) {
+  const root = doc.documentElement;
+  if (!root) return { removed: 0 };
+  const nodes = walkCollect(root, (node, out) => {
+    const tag = node.tagName && node.tagName.toLowerCase();
+    if (tag !== 'text' || hasTextPathChild(node)) return;
+    const label = normalizeLabel(plainTextContent(node));
+    if (label && CORNER_LABELS.has(label)) out.push(node);
+  });
+  return { removed: removeNodes(nodes) };
+}
+
+/** Remove big ring geometry only — never touches <rect> or textPath guides. */
+function stripRingShapes(doc) {
+  const root = doc.documentElement;
+  if (!root) return { removed: 0 };
+  const textPathTargetIds = collectTextPathTargetIds(root);
+  const nodes = walkCollect(root, (node, out) => {
+    const tag = node.tagName && node.tagName.toLowerCase();
+    if (tag === 'circle' || tag === 'ellipse') out.push(node);
+    else if (isStrokedRingPath(node, textPathTargetIds)) out.push(node);
+  });
+  return { removed: removeNodes(nodes) };
+}
+
+/**
+ * Mutates `doc` in place. Call after analyzeQuarterMarkers (rects stay in the DOM),
+ * before flattenSvgToPaths / bakeTextToPaths.
+ */
+function stripDxfAnnotations(doc) {
+  const a = stripOrientationLabels(doc);
+  const b = stripRingShapes(doc);
+  return { removed: a.removed + b.removed };
 }
 
 module.exports = {
   stripDxfAnnotations,
+  stripOrientationLabels,
+  stripRingShapes,
   CORNER_LABELS,
   normalizeLabel,
 };

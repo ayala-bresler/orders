@@ -204,7 +204,7 @@ async function buildDxfExport(req) {
   const body = req.body || {};
 
   if (body.preparedSvg && typeof body.preparedSvg === 'string') {
-    const result = exportFromPreparedSvg(orderId, itemId, body.preparedSvg);
+    const result = await exportFromPreparedSvg(orderId, itemId, body.preparedSvg);
     return { orderId, itemId, result };
   }
 

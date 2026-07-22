@@ -189,12 +189,7 @@ export async function prepareSvgForExport({ liveSvg, guidePathIds = [] } = {}) {
       (stroke && stroke !== 'none');
     if (fillNone && hasStroke) path.remove();
   }
-  // Tiny cut markers
-  for (const rect of [...exportSvg.querySelectorAll('rect')]) {
-    const w = Number(rect.getAttribute('width') || 0);
-    const h = Number(rect.getAttribute('height') || 0);
-    if (w > 0 && h > 0 && w <= 4 && h <= 4) rect.remove();
-  }
+  // Keep all <rect> cut markers — required in DXF
   for (const path of [...exportSvg.querySelectorAll('path[id]')]) {
     if (guideSet.has(path.getAttribute('id'))) path.remove();
   }

@@ -12,10 +12,22 @@ const { pathToPolylines, transformPolylines } = require('./pathUtils');
 
 const _fontCache = new Map();
 
+/**
+ * Ring centering uses only the letter ב as the probe for ink height / radial
+ * fit — not the full verse. Cached per (font file, fontSize).
+ */
+const RING_CENTER_REF_CHAR = 'ב';
+/** @type {Map<string, { above: number, below: number, total: number, blockCenter: number, top: number, bottom: number }>} */
+const _betInkByFontSize = new Map();
+
 function fmt(n) {
   const r = Math.round(Number(n) * 10000) / 10000;
   if (Number.isInteger(r)) return String(r);
   return r.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function roundFontSizeKey(fontSize) {
+  return Math.round(Number(fontSize) * 10) / 10;
 }
 
 function loadFont(family) {
@@ -28,6 +40,11 @@ function loadFont(family) {
   try {
     const font = opentype.parse(fs.readFileSync(full));
     _fontCache.set(full, font);
+    // Prefill ב ink height for every selectable font size (16…9 + min 8.8).
+    const pickerSizes = [];
+    for (let px = 16; px >= 9; px -= 1) pickerSizes.push(px);
+    pickerSizes.push(8.8);
+    warmBetInkCache(font, pickerSizes);
     return font;
   } catch {
     return null;
@@ -60,12 +77,12 @@ function ringAnnulusThicknessPx() {
 
 /**
  * Ink extents above/below alphabetic baseline (px) for a single verse line.
- * @returns {{ above: number, below: number, total: number }}
+ * @returns {{ above: number, below: number, total: number, blockCenter?: number, top?: number, bottom?: number }}
  */
 function measureVerseInkHalfExtents(font, text, fontSize) {
   const line = String(text || '');
   if (!font || !line) {
-    return { above: fontSize / 2, below: fontSize / 2, total: fontSize };
+    return { above: fontSize / 2, below: fontSize / 2, total: fontSize, blockCenter: 0 };
   }
 
   let top = Infinity;
@@ -80,7 +97,7 @@ function measureVerseInkHalfExtents(font, text, fontSize) {
   }
 
   if (!Number.isFinite(top)) {
-    return { above: fontSize / 2, below: fontSize / 2, total: fontSize };
+    return { above: fontSize / 2, below: fontSize / 2, total: fontSize, blockCenter: 0 };
   }
 
   const above = Math.max(0, -top);
@@ -91,6 +108,36 @@ function measureVerseInkHalfExtents(font, text, fontSize) {
 
 function measureVerseInkHeight(font, text, fontSize) {
   return measureVerseInkHalfExtents(font, text, fontSize).total;
+}
+
+/**
+ * Ink height / half-extents of ב at `fontSize` (cached).
+ * Used for ring-centering H_font — not the full verse.
+ */
+function measureBetInkHalfExtents(font, fontSize) {
+  if (!font || !Number.isFinite(Number(fontSize)) || fontSize <= 0) {
+    const fs = Number(fontSize) || 16;
+    return { above: fs / 2, below: fs / 2, total: fs, blockCenter: 0 };
+  }
+  const key = `${font.unitsPerEm}|${roundFontSizeKey(fontSize)}`;
+  const cached = _betInkByFontSize.get(key);
+  if (cached) return cached;
+
+  const extents = measureVerseInkHalfExtents(font, RING_CENTER_REF_CHAR, fontSize);
+  _betInkByFontSize.set(key, extents);
+  return extents;
+}
+
+function measureBetInkHeight(font, fontSize) {
+  return measureBetInkHalfExtents(font, fontSize).total;
+}
+
+/** Prefill ב ink cache for common picker sizes (optional warm-up). */
+function warmBetInkCache(font, fontSizes) {
+  if (!font || !Array.isArray(fontSizes)) return;
+  for (const px of fontSizes) {
+    if (Number.isFinite(Number(px))) measureBetInkHalfExtents(font, px);
+  }
 }
 
 function parseDy(raw, fontSize) {
@@ -256,6 +303,29 @@ function measureVerseInkRadialBounds(
     cursor += advances[i] + (i < chars.length - 1 ? spacingPx : 0);
   }
 
+  if (!Number.isFinite(rMin)) return null;
+  return { rMin, rMax, rMid: (rMin + rMax) / 2 };
+}
+
+/**
+ * Radial ink bounds for a single ב placed at the path midpoint.
+ * Used for ring centering — avoids walking every verse glyph.
+ */
+function measureBetProbeRadialBounds(font, fontSize, pathGuide, midDist, dyPx, cx, cy) {
+  if (!font || !pathGuidePoints(pathGuide).length) return null;
+  const sampler = createPathGuideSampler(pathGuide);
+  const len = sampler.length();
+  const dist = Math.max(0, Math.min(len, midDist));
+  const base = sampler.at(dist);
+  const anchor = centralTextAnchor(base, dyPx, fontSize);
+  const radii = glyphWorldRadii(font, RING_CENTER_REF_CHAR, fontSize, anchor, cx, cy);
+  if (!radii.length) return null;
+  let rMin = Infinity;
+  let rMax = -Infinity;
+  for (const r of radii) {
+    rMin = Math.min(rMin, r);
+    rMax = Math.max(rMax, r);
+  }
   if (!Number.isFinite(rMin)) return null;
   return { rMin, rMax, rMid: (rMin + rMax) / 2 };
 }
@@ -463,7 +533,7 @@ function verseTextMidpointDist(pathGuide, font, text, fontSize, startOffset, tex
  *
  * @param {number} innerRx R_min
  * @param {number} outerRx R_max
- * @param {number} textLenPx H_font (glyph ink height)
+ * @param {number} textLenPx H_font — ink height of ב at the chosen font size
  * @returns {number} absolute radius from medallion center for the ink midpoint
  */
 function ringTargetRadiusPx(innerRx, outerRx, textLenPx) {
@@ -483,21 +553,28 @@ function ringTargetRadiusPx(innerRx, outerRx, textLenPx) {
 
 /**
  * Closed-form dy guess for dominant-baseline="central" (linear radial model).
- * Used only as a seed; absolute solve refines against measured ink radii.
+ * Seed only — absolute solve refines against measured ב ink radii.
+ * Path midpoint uses startOffset/textAnchor (typically 50% + middle).
  */
 function guessRingCenteringDyPx(font, text, fontSize, layout, rTarget) {
   const pathGuide = layout?.pathGuide ?? (layout?.pathPts ? { points: layout.pathPts } : null);
   const { startOffset, textAnchor, cx, cy } = layout;
   const sampler = createPathGuideSampler(pathGuide);
-  const midDist = verseTextMidpointDist(
-    pathGuide,
-    font,
-    text,
-    fontSize,
-    startOffset,
-    textAnchor,
-    layout.letterSpacingEm || 0
-  );
+  const len = sampler.length();
+  // With text-anchor=middle + startOffset=50%, visual center is at mid-path.
+  // Fall back to verse midpoint only when anchors differ.
+  let midDist = len / 2;
+  if (!(textAnchor === 'middle' && String(startOffset || '').trim() === '50%')) {
+    midDist = verseTextMidpointDist(
+      pathGuide,
+      font,
+      text,
+      fontSize,
+      startOffset,
+      textAnchor,
+      layout.letterSpacingEm || 0
+    );
+  }
   const base = sampler.at(midDist);
   const rPath = Math.hypot(base.x - cx, base.y - cy);
   if (rPath < 1e-6) return 0.4 * fontSize;
@@ -509,7 +586,7 @@ function guessRingCenteringDyPx(font, text, fontSize, layout, rTarget) {
   const dot = nx * ux + ny * uy;
   if (Math.abs(dot) < 1e-4) return 0.4 * fontSize;
 
-  const { blockCenter } = measureVerseInkHalfExtents(font, text, fontSize);
+  const { blockCenter } = measureBetInkHalfExtents(font, fontSize);
   const inkFromCentral = svgCentralAlphabeticOffsetPx(fontSize) + blockCenter;
   return (rTarget - rPath) / dot - inkFromCentral;
 }
@@ -517,8 +594,9 @@ function guessRingCenteringDyPx(font, text, fontSize, layout, rTarget) {
 /**
  * dy (px) so the verse ink midpoint sits at the equal-margin annulus center.
  *
- * Solves absolutely: measure full-glyph rMin/rMax from the medallion center and
- * choose dy that minimizes |rMid − R_target|, where
+ * H_font is the ink height of ב at the chosen font size (cached) — not the full verse.
+ * Radial fit also probes only ב at the path midpoint.
+ *
  *   R_target = R_min + ((R_max − R_min) − H_font)/2 + H_font/2
  * with dominant-baseline="central" (bake + runtime SVG/DXF).
  *
@@ -531,25 +609,36 @@ function computeRingCenteringDyPx(font, text, fontSize, layout, options = {}) {
   const { startOffset, textAnchor, cx, cy } = layout;
   const innerRx = Number(layout.innerRx);
   const outerRx = Number(layout.outerRx);
-  const letterSpacingEm = layout.letterSpacingEm || 0;
-  const textLen = measureVerseInkHeight(font, text, fontSize);
+  const textLen = measureBetInkHeight(font, fontSize);
   const rTarget =
     Number.isFinite(innerRx) && Number.isFinite(outerRx) && outerRx > innerRx
       ? ringTargetRadiusPx(innerRx, outerRx, textLen)
       : ringTargetRadiusPx(SVG_INNER_RX, SVG_OUTER_RX, textLen);
 
-  const measureMid = (dyPx) => {
-    const bounds = measureVerseInkRadialBounds(
+  const sampler = createPathGuideSampler(pathGuide);
+  const len = sampler.length();
+  let midDist = len / 2;
+  if (!(textAnchor === 'middle' && String(startOffset || '').trim() === '50%')) {
+    midDist = verseTextMidpointDist(
+      pathGuide,
       font,
       text,
       fontSize,
-      pathGuide,
       startOffset,
       textAnchor,
+      layout.letterSpacingEm || 0
+    );
+  }
+
+  const measureMid = (dyPx) => {
+    const bounds = measureBetProbeRadialBounds(
+      font,
+      fontSize,
+      pathGuide,
+      midDist,
       dyPx,
       cx,
-      cy,
-      letterSpacingEm
+      cy
     );
     return bounds ? bounds.rMid : null;
   };
@@ -802,10 +891,15 @@ module.exports = {
   layoutTextItemToPaths,
   measureTextWidth,
   measureVerseInkHeight,
+  measureBetInkHeight,
+  measureBetInkHalfExtents,
+  warmBetInkCache,
+  RING_CENTER_REF_CHAR,
   computeRingCenteringDyEm,
   computeRingFittingDyEm,
   computeRingFittingDyPx,
   measureVerseInkRadialBounds,
+  measureBetProbeRadialBounds,
   ringTargetRadiusPx,
   exportParentDyForTextItems,
   ringAnnulusThicknessPx,

@@ -39,13 +39,13 @@ const PDF_FIELD_MAP = {
   orderDate: 'Text Field 32',
   parochetHeight: 'Text Field 34',
   verses: {
-    // עליון ימין — שורה ראשונה (עם התווית) + שורה שנייה
+    // ימין למעלה — שורה 1 = עליון, שורה 2 = תחתון
     top_right: ['Text Field 12', 'Text Field 14'],
-    // עליון שמאל
+    // שמאל למעלה
     top_left: ['Text Field 15', 'Text Field 16'],
-    // תחתון ימין
+    // ימין למטה
     bottom_right: ['Text Field 17', 'Text Field 19'],
-    // תחתון שמאל
+    // שמאל למטה
     bottom_left: ['Text Field 18', 'Text Field 20'],
   },
   notes: [
@@ -94,9 +94,9 @@ function setCheck(form, fieldName, checked) {
 }
 
 function verseLine(values, corner, lineIndex) {
-  // PDF: first line = upper ring (outer), second line = lower ring (inner).
-  const ring = lineIndex === 0 ? 'outer' : 'inner';
-  const suffix = ring === 'outer' ? '2' : '1';
+  // PDF: first line = עליון (inner / text_1), second = תחתון (outer / text_2).
+  // Same mapping as the side form, preview, and DB columns.
+  const suffix = lineIndex === 0 ? '1' : '2';
   const key = `${corner}_${suffix}`;
   return values[key] || '';
 }

@@ -41,6 +41,8 @@ function applyStandardEightVerseLayout(fields) {
 
   sorted.forEach((field, idx) => {
     const corner = VERSE_CORNER_ORDER[Math.floor(idx / 2)];
+    // Document pair order: first = עליון (inner/text_1), second = תחתון (outer/text_2).
+    // Matches preview arcs, side form, DB columns, and PDF line order.
     const ring = idx % 2 === 0 ? VERSE_RING_UPPER : VERSE_RING_LOWER;
     assignByRef.set(field.href || field.key, { corner, ring, idx });
   });

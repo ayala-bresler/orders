@@ -119,13 +119,22 @@ function indexEditableNodes(doc, fieldByHref) {
 
 function extractEditableFields(svgString, templateContext) {
   const ctx = resolveContext(templateContext);
-  const raw = svgString || loadMasterSvg(ctx.svgPath);
+  const raw = svgString || ctx.svgRaw || loadMasterSvg(ctx.svgPath);
   const doc = parse(raw);
   const nodeMap = indexEditableNodes(doc, ctx.fieldByHref);
+  const {
+    loadCanonicalVerseDefaultsByKey,
+  } = require('../utils/canonicalVerses');
+  const canonical = loadCanonicalVerseDefaultsByKey();
 
   return ctx.fields.map((field) => {
     const node = nodeMap.get(field.href);
-    const text = node ? (node.textContent || '').trim() : field.defaultText || '';
+    const fromNode = node ? (node.textContent || '').trim() : '';
+    const text =
+      canonical[field.key] ||
+      field.defaultText ||
+      fromNode ||
+      '';
     return {
       key: field.key,
       column: field.column,
@@ -333,10 +342,20 @@ function renderCustomizedSvg(values = {}, fontScales = {}, templateContext) {
   }
 
   const doc = parse(loadMasterSvg(ctx.svgPath));
-  const nodeMap = indexEditableNodes(doc, ctx.fieldByHref);
+  const {
+    applyCanonicalVersesToDoc,
+    loadCanonicalVerseDefaultsByKey,
+  } = require('../utils/canonicalVerses');
+  applyCanonicalVersesToDoc(doc, ctx.fields);
 
-  for (const [key, text] of Object.entries(clean)) {
-    const field = ctx.fieldByKey[key];
+  const nodeMap = indexEditableNodes(doc, ctx.fieldByHref);
+  const canonical = loadCanonicalVerseDefaultsByKey();
+
+  // Fill every verse field: request values when provided, else canonical 11–15 defaults.
+  for (const field of ctx.fields) {
+    const text = Object.prototype.hasOwnProperty.call(clean, field.key)
+      ? clean[field.key]
+      : canonical[field.key] || field.defaultText || '';
     const node = nodeMap.get(field.href);
     if (!node) continue;
     applyVerseLayout(doc, node, text, cleanScales, field);
@@ -350,6 +369,8 @@ function renderCustomizedSvg(values = {}, fontScales = {}, templateContext) {
 /**
  * Preview SVG — by default keeps live <textPath> (fast).
  * Pass { bake: true } for path outlines that match DXF ring centering exactly.
+ * Keeps the full file (including orientation labels) so on-screen preview matches the template.
+ * DXF export strips labels/rings separately in stripDxfAnnotations.
  */
 function renderPreviewSvg(values = {}, fontScales = {}, templateContext, options = {}) {
   const customized = renderCustomizedSvg(values, fontScales, templateContext);

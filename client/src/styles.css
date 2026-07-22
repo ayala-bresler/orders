@@ -896,9 +896,12 @@ body {
   max-height: none;
   max-width: none;
   padding: 6px 8px;
-  font-size: 12px;
-  line-height: 1.35;
+  /* Readable, but small enough that full verse fits in 2 rows without scroll */
+  font-size: 14px;
+  line-height: 1.3;
   resize: none;
+  overflow-x: hidden;
+  overflow-y: hidden;
 }
 
 .verse-page .font-controls {
@@ -1115,7 +1118,7 @@ body {
 
 @media (max-height: 720px) {
   .verse-page .verse-field textarea {
-    font-size: 11px;
+    font-size: 13px;
   }
 
   .verse-page .product-meta dd {
