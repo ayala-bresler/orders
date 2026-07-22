@@ -257,11 +257,8 @@ async function exportOrderItemPdf(orderId, itemId, deps = {}) {
   });
 
   const pdfBytes = await fillOrderPdf(payload);
-  const filePath = pdfOutputPath(orderId, itemId);
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, pdfBytes);
-
-  return { pdfBytes, filePath, payload };
+  // In-memory only — email attaches bytes; nothing written under STORAGE_DIR.
+  return { pdfBytes, filePath: null, payload };
 }
 
 module.exports = {

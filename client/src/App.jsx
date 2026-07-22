@@ -18,6 +18,8 @@ import {
   loadPersistedUi,
   clearPersistedUi,
 } from './utils/sessionPersist.js';
+import { clearVerseDraft } from './utils/verseDraftPersist.js';
+import { prefetchVerseBake, clearVerseBakeCache } from './utils/verseBakePrefetch.js';
 import {
   clearSessionAuth,
   getSessionMaxAgeMs,
@@ -234,7 +236,17 @@ export default function App() {
         setStep('details');
         return;
       }
-      setStep(data.detailsComplete ? 'editor' : 'details');
+      const nextKey = `${data.item?.plate_diameter ?? ''}:${data.item?.size_code ?? ''}`;
+      if (data.detailsComplete) {
+        prefetchVerseBake({
+          orderId: session.order.order_id,
+          itemId: item.order_item_id,
+          templateKey: nextKey,
+        });
+        setStep('editor');
+      } else {
+        setStep('details');
+      }
     } catch {
       setStep('details');
     }
@@ -322,6 +334,7 @@ export default function App() {
     setCancelDetailsBusy(true);
     try {
       await deleteOrderItem(session.order.order_id, itemId);
+      clearVerseDraft(session.order.order_id, itemId);
       const nextItems = (session.items || []).filter(
         (item) => Number(item.order_item_id) !== Number(itemId)
       );
@@ -349,6 +362,7 @@ export default function App() {
     if (!session?.order?.order_id) return;
     try {
       await deleteOrderItem(session.order.order_id, itemId);
+      clearVerseDraft(session.order.order_id, itemId);
       setSession((s) =>
         s
           ? {
@@ -377,6 +391,7 @@ export default function App() {
   const goToEditor = async (templateKey) => {
     setDetailsMayPromptDelete(false);
     if (!activeItem || !itemSupportsVerses) return;
+    let key = templateKey ? String(templateKey) : editorTemplateKey;
     if (templateKey) {
       setEditorTemplateKey(String(templateKey));
     } else if (session?.order?.order_id && activeItem.order_item_id) {
@@ -385,12 +400,18 @@ export default function App() {
           session.order.order_id,
           activeItem.order_item_id
         );
-        setEditorTemplateKey(
-          `${data.item?.plate_diameter ?? ''}:${data.item?.size_code ?? ''}`
-        );
+        key = `${data.item?.plate_diameter ?? ''}:${data.item?.size_code ?? ''}`;
+        setEditorTemplateKey(key);
       } catch {
         /* keep previous key */
       }
+    }
+    if (session?.order?.order_id && activeItem.order_item_id) {
+      prefetchVerseBake({
+        orderId: session.order.order_id,
+        itemId: activeItem.order_item_id,
+        templateKey: key,
+      });
     }
     setStep('editor');
     setFlash('');
@@ -398,6 +419,10 @@ export default function App() {
 
   const handleOrderComplete = (completedItemId, remainingItemsFromServer) => {
     const removedId = Number(completedItemId ?? activeItem?.order_item_id);
+    if (session?.order?.order_id && Number.isFinite(removedId)) {
+      clearVerseDraft(session.order.order_id, removedId);
+      clearVerseBakeCache(session.order.order_id, removedId);
+    }
     const fromSession = (session?.items || []).filter(
       (it) => Number(it.order_item_id) !== removedId
     );
@@ -643,6 +668,7 @@ export default function App() {
             key={`${activeItem.order_item_id}-${editorTemplateKey}`}
             orderId={session.order.order_id}
             itemId={activeItem.order_item_id}
+            templateKey={editorTemplateKey}
             onEditOrderDetails={goToDetails}
             onOrderComplete={handleOrderComplete}
           />

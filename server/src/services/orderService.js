@@ -3,11 +3,9 @@
 /**
  * orderService
  * ------------
- * Persists a personalized order item's verses in two places (per requirement):
- *   1. The 8 structured verse_* columns on order_items.
- *   2. A serialized customized SVG snapshot: stored in the order_items
- *      `customized_svg` column AND written to disk under STORAGE_DIR, linked to
- *      the order/item. The master template is never modified.
+ * Persists verse text in structured verse_* columns (+ verse_font_scales).
+ * SVG / DXF / PDF are generated in memory from the size template + DB values;
+ * no per-order snapshot files are written to disk.
  */
 
 const fs = require('fs');
@@ -47,10 +45,6 @@ const PK = 'item_id';
 
 function itemSelectColumns() {
   return ITEM_KEYS.map((key) => `oi.${key}`).join(', ');
-}
-
-function snapshotPath(orderId, orderItemId) {
-  return path.join(STORAGE_DIR, String(orderId), `item-${orderItemId}.svg`);
 }
 
 /**
@@ -188,12 +182,13 @@ async function getOrderItemVerses(orderId, orderItemId) {
 }
 
 /**
- * Save personalized verses for an order item.
+ * Save personalized verses for an order item (DB columns only — no disk snapshot).
+ * SVG/DXF are regenerated deterministically from template + verses + font scales.
  * @param {number} orderId
  * @param {number} orderItemId
  * @param {Object<string,string>} values  { fieldKey: text }
  * @param {Object<string,number>} [fontScales]  { fieldKey: 0.4..1.0 }
- * @returns {Promise<{orderItemId:number, values:Object, fontScales:Object, customizedSvgPath:string}>}
+ * @returns {Promise<{orderItemId:number, values:Object, fontScales:Object}>}
  */
 async function saveOrderItemVerses(orderId, orderItemId, values, fontScales = {}) {
   await assertItemSupportsVerses(orderId, orderItemId);
@@ -210,11 +205,6 @@ async function saveOrderItemVerses(orderId, orderItemId, values, fontScales = {}
     err.status = 400;
     throw err;
   }
-  const customizedSvg = svgService.renderCustomizedSvg(clean, cleanScales, templateContext);
-
-  const filePath = snapshotPath(orderId, orderItemId);
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, customizedSvg, 'utf8');
 
   const columnValues = svgService.columnsFromValues(clean, templateContext);
   const setClauses = [];
@@ -226,12 +216,9 @@ async function saveOrderItemVerses(orderId, orderItemId, values, fontScales = {}
     params.push(val);
     i += 1;
   }
-  setClauses.push(`customized_svg = $${i}`);
-  params.push(customizedSvg);
-  i += 1;
-  setClauses.push(`customized_svg_path = $${i}`);
-  params.push(filePath);
-  i += 1;
+  // Clear legacy file snapshots — reconstruction is from columns + template.
+  setClauses.push(`customized_svg = NULL`);
+  setClauses.push(`customized_svg_path = NULL`);
   setClauses.push(`verse_font_scales = $${i}`);
   const baseByKey = Object.fromEntries(
     (templateContext.fields || []).map((f) => [f.key, f.fontSizePx ?? BASE_FONT_SIZE_PX])
@@ -249,8 +236,7 @@ async function saveOrderItemVerses(orderId, orderItemId, values, fontScales = {}
     `UPDATE order_items
         SET ${setClauses.join(', ')}
       WHERE order_id = $${i} AND ${PK} = $${i + 1}
-      RETURNING ${PK} AS order_item_id, ${returningCols},
-                customized_svg_path, verse_font_scales`,
+      RETURNING ${PK} AS order_item_id, ${returningCols}, verse_font_scales`,
     params
   );
 
@@ -267,8 +253,7 @@ async function saveOrderItemVerses(orderId, orderItemId, values, fontScales = {}
     orderItemId: row.order_item_id,
     values: svgService.valuesFromColumns(row, templateContext),
     fontScales: fontScalesFromRow(row),
-    customizedSvg,
-    customizedSvgPath: row.customized_svg_path,
+    customizedSvgPath: null,
     templateMeta: templateContext.meta,
   };
 }
@@ -540,9 +525,21 @@ function removeItemStorageFiles(orderId, orderItemId) {
   if (!fs.existsSync(dir)) return;
   const prefix = `item-${orderItemId}`;
   for (const name of fs.readdirSync(dir)) {
-    if (name === prefix || name.startsWith(`${prefix}.`) || name.startsWith(`${prefix}-`)) {
-      fs.rmSync(path.join(dir, name), { force: true });
+    if (
+      name === prefix ||
+      name.startsWith(`${prefix}.`) ||
+      name.startsWith(`${prefix}-`)
+    ) {
+      fs.rmSync(path.join(dir, name), { recursive: true, force: true });
     }
+  }
+  // Drop empty order folder after the last item file is gone.
+  try {
+    if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  } catch {
+    /* ignore */
   }
 }
 
@@ -630,5 +627,6 @@ module.exports = {
   completeOrderItem,
   deleteOrderItem,
   deleteOrder,
+  removeItemStorageFiles,
   assertItemSupportsVerses,
 };

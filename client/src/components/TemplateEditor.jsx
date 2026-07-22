@@ -27,13 +27,25 @@ import {
   adjustLetterSpacing,
   LETTER_SPACING_STEP_EM,
 } from '../utils/verseStyles.js';
+import {
+  saveVerseDraft,
+  loadVerseDraft,
+  clearVerseDraft,
+} from '../utils/verseDraftPersist.js';
+import { takeVerseBakeCache } from '../utils/verseBakePrefetch.js';
 import { IconBack, IconPrint, IconReset, IconSave, IconUndo } from './Icons.jsx';
 
 function bakeSignature(values, fontScales) {
   return JSON.stringify({ values, fontScales });
 }
 
-export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, onOrderComplete }) {
+export default function TemplateEditor({
+  orderId,
+  itemId,
+  templateKey = '',
+  onEditOrderDetails,
+  onOrderComplete,
+}) {
   const canvasRef = useRef(null);
   const bakeReqIdRef = useRef(0);
   const bakedSvgRef = useRef('');
@@ -117,6 +129,13 @@ export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, on
               /* start from master defaults */
             }
           }
+
+          // Restore unsaved edits from a previous visit (not written to DB yet).
+          const draft = loadVerseDraft(orderId, itemId, templateKey);
+          if (draft) {
+            initial = { ...initial, ...draft.values };
+            scales = { ...scales, ...draft.fontScales };
+          }
         }
 
         setMasterSvg(tpl.svg || '');
@@ -130,6 +149,25 @@ export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, on
         setSavedValues({ ...defaultMap, ...saved });
         setFontScales(scales);
         setSavedFontScales(scales);
+
+        // Use details-page prefetch if it already finished with the same verses.
+        try {
+          const warmed = await takeVerseBakeCache({
+            orderId,
+            itemId,
+            templateKey,
+            values: initial,
+            fontScales: scales,
+          });
+          if (alive && warmed?.svg) {
+            bakedSvgRef.current = warmed.svg;
+            bakeSigRef.current = warmed.sig || bakeSignature(initial, scales);
+            setBakedSvg(warmed.svg);
+          }
+        } catch {
+          /* bake effect will fetch */
+        }
+
         setStatus('ready');
       } catch (err) {
         if (!alive) return;
@@ -141,7 +179,49 @@ export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, on
     return () => {
       alive = false;
     };
-  }, [orderId, itemId]);
+  }, [orderId, itemId, templateKey]);
+
+  // Keep draft in session while editing — survives back-navigation without DB save.
+  useEffect(() => {
+    if (status !== 'ready' || !orderId || !itemId || !fields.length) return undefined;
+
+    const textDirty = fields.some(
+      (f) => (values[f.key] ?? '') !== (savedValues[f.key] ?? '')
+    );
+    const scaleDirty = fields.some(
+      (f) =>
+        !stylesEqual(
+          fontScales[f.key],
+          savedFontScales[f.key],
+          f.fontSizePx ?? 16
+        )
+    );
+
+    if (!textDirty && !scaleDirty) {
+      clearVerseDraft(orderId, itemId);
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      saveVerseDraft(orderId, itemId, {
+        values,
+        fontScales,
+        templateKey,
+      });
+    }, 120);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    status,
+    fields,
+    values,
+    fontScales,
+    savedValues,
+    savedFontScales,
+    orderId,
+    itemId,
+    templateKey,
+  ]);
 
   // Server bake after edits — keep previous bake on screen (no "מכינים תצוגה").
   useEffect(() => {
@@ -230,6 +310,18 @@ export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, on
   const handleReset = () => {
     setValues(savedValues);
     setFontScales(savedFontScales);
+    clearVerseDraft(orderId, itemId);
+  };
+
+  const handleBackToDetails = () => {
+    if (orderId && itemId) {
+      saveVerseDraft(orderId, itemId, {
+        values,
+        fontScales,
+        templateKey,
+      });
+    }
+    onEditOrderDetails?.();
   };
 
   const handlePrint = () => {
@@ -294,6 +386,7 @@ export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, on
         exportValues,
         exportScales
       );
+      clearVerseDraft(orderId, itemId);
       setOrderCompleted(true);
 
       if (emailRes.warnings && emailRes.warnings.length) {
@@ -327,6 +420,7 @@ export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, on
       const savedScales = res.fontScales || {};
       setSavedFontScales(savedScales);
       setFontScales(savedScales);
+      clearVerseDraft(orderId, itemId);
       setSaveAcknowledged(true);
     } catch (err) {
       setError(err.message);
@@ -450,7 +544,7 @@ export default function TemplateEditor({ orderId, itemId, onEditOrderDetails, on
             <button
               type="button"
               className="vp-nav-icon"
-              onClick={onEditOrderDetails}
+              onClick={handleBackToDetails}
               disabled={saving || exportingDxf}
               aria-label="פרטי הזמנה"
               title="פרטי הזמנה"

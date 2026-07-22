@@ -302,14 +302,20 @@ async function exportDxfEmailHandler(req, res, next) {
     });
 
     const completed = await orderService.completeOrderItem(orderId, itemId);
+    // Ensure DXF/PDF/SVG snapshots are gone even if delete missed a name pattern.
+    try {
+      orderService.removeItemStorageFiles(orderId, itemId);
+    } catch (cleanupErr) {
+      console.warn('[storage] post-complete cleanup failed:', cleanupErr.message);
+    }
 
     res.json({
       ok: true,
       sentTo,
       quarterCount: result.quarters.length,
       attachmentCount,
-      filePaths: result.filePaths,
-      pdfFilePath: pdfResult?.filePath || null,
+      filePaths: null,
+      pdfFilePath: null,
       pdfAttached: Boolean(pdfResult?.pdfBytes),
       deletedItemId: completed.deletedItemId,
       remainingItems: completed.remainingItems,
@@ -361,10 +367,15 @@ async function completeOrderHandler(req, res, next) {
     });
 
     const completed = await orderService.completeOrderItem(orderId, itemId);
+    try {
+      orderService.removeItemStorageFiles(orderId, itemId);
+    } catch (cleanupErr) {
+      console.warn('[storage] post-complete cleanup failed:', cleanupErr.message);
+    }
 
     res.json({
       ok: true,
-      pdfFilePath: pdfResult.filePath,
+      pdfFilePath: null,
       deletedItemId: completed.deletedItemId,
       remainingItems: completed.remainingItems,
       remainingCount: completed.remainingCount,

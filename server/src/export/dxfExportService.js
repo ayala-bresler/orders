@@ -103,7 +103,7 @@ function svgToDxf(preparedSvgString) {
 }
 
 /**
- * Split raw SVG into 4 quarters and convert each to DXF.
+ * Split raw SVG into 4 quarters and convert each to DXF (in memory only).
  */
 function exportQuartersFromRawSvg(rawSvgString, saveOptions = null) {
   const scaleFactor = saveOptions?.scaleFactor;
@@ -128,28 +128,13 @@ function exportQuartersFromRawSvg(rawSvgString, saveOptions = null) {
     });
   }
 
-  let filePaths = null;
-  if (saveOptions?.orderId != null && saveOptions?.orderItemId != null) {
-    const { orderId, orderItemId } = saveOptions;
-    const dir = path.join(STORAGE_DIR, String(orderId));
-    fs.mkdirSync(dir, { recursive: true });
-    filePaths = {};
-    for (const q of quarters) {
-      const dxfFile = quarterDxfPath(orderId, orderItemId, q.id);
-      const svgFile = quarterSvgPath(orderId, orderItemId, q.id);
-      fs.writeFileSync(dxfFile, q.dxf, 'utf8');
-      fs.writeFileSync(svgFile, q.svg, 'utf8');
-      filePaths[q.id] = { dxf: dxfFile, svg: svgFile };
-    }
-  }
-
   return {
     quarters,
     intersection: split.intersection,
     analysis: split.analysis,
     scaleFactor: split.scaleFactor,
     warnings,
-    filePaths,
+    filePaths: null,
   };
 }
 

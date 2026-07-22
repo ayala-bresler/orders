@@ -8,6 +8,7 @@ import ModelSelect from './ModelSelect.jsx';
 import NumberedNotesArea from './NumberedNotesArea.jsx';
 import DeliveryDateField from './DeliveryDateField.jsx';
 import { IconBack, IconContinue } from './Icons.jsx';
+import { prefetchVerseBake } from '../utils/verseBakePrefetch.js';
 
 function fieldValue(record, key) {
   const val = record?.[key];
@@ -167,9 +168,29 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
       ? 'size_no_verses'
       : 'select_plate';
 
+  const templateKeyForItem = (rawItem) =>
+    `${rawItem?.plate_diameter ?? ''}:${rawItem?.size_code ?? ''}`;
+
   useEffect(() => {
     onSupportsVersesChange?.(versesSupported);
   }, [versesSupported, onSupportsVersesChange]);
+
+  // Prefetch server-baked verse SVG while filling details (centering ready before editor).
+  useEffect(() => {
+    if (status !== 'ready' || !versesSupported || !orderId || !itemId) return undefined;
+    const templateKey = templateKeyForItem(item);
+    prefetchVerseBake({ orderId, itemId, templateKey }).catch(() => {
+      /* non-blocking */
+    });
+    return undefined;
+  }, [
+    status,
+    versesSupported,
+    orderId,
+    itemId,
+    item.plate_diameter,
+    item.size_code,
+  ]);
 
   const changeOrder = (key, val) => {
     setSaveAcknowledged(false);
@@ -264,9 +285,6 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
       setSaving(false);
     }
   };
-
-  const templateKeyForItem = (rawItem) =>
-    `${rawItem?.plate_diameter ?? ''}:${rawItem?.size_code ?? ''}`;
 
   const handleSaveAndContinue = async () => {
     try {
