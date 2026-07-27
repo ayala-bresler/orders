@@ -527,28 +527,22 @@ function verseTextMidpointDist(pathGuide, font, text, fontSize, startOffset, tex
 /**
  * Ink-center radius for equal margins between rings.
  *
- * User formula (inner edge of a H-high block):
- *   TargetRadius = R_min + ((R_max − R_min) − H_font) / 2
- * Ink midpoint then sits at TargetRadius + H_font/2 ≡ (R_min + R_max) / 2.
+ * The geometric midpoint of the annulus is fixed:
+ *   R_target = (R_min + R_max) / 2
+ * H_font cancels in the equal-margin formula, so it is not remeasured per size.
  *
  * @param {number} innerRx R_min
  * @param {number} outerRx R_max
- * @param {number} textLenPx H_font — ink height of ב at the chosen font size
+ * @param {number} [_textLenPx] ignored — kept for callers
  * @returns {number} absolute radius from medallion center for the ink midpoint
  */
-function ringTargetRadiusPx(innerRx, outerRx, textLenPx) {
+function ringTargetRadiusPx(innerRx, outerRx, _textLenPx) {
   const inner = Number(innerRx);
   const outer = Number(outerRx);
-  const textLen = Number(textLenPx);
   if (!Number.isFinite(inner) || !Number.isFinite(outer)) {
     return (SVG_INNER_RX + SVG_OUTER_RX) / 2;
   }
-  const gap = outer - inner;
-  if (!Number.isFinite(textLen) || textLen <= 0) {
-    return inner + gap / 2;
-  }
-  const targetInnerEdge = inner + (gap - textLen) / 2;
-  return targetInnerEdge + textLen / 2;
+  return (inner + outer) / 2;
 }
 
 /**
@@ -572,7 +566,7 @@ function guessRingCenteringDyPx(font, text, fontSize, layout, rTarget) {
       fontSize,
       startOffset,
       textAnchor,
-      layout.letterSpacingEm || 0
+      0 // spacing ignored for dy seed
     );
   }
   const base = sampler.at(midDist);
@@ -594,11 +588,9 @@ function guessRingCenteringDyPx(font, text, fontSize, layout, rTarget) {
 /**
  * dy (px) so the verse ink midpoint sits at the equal-margin annulus center.
  *
- * H_font is the ink height of ב at the chosen font size (cached) — not the full verse.
- * Radial fit also probes only ב at the path midpoint.
- *
- *   R_target = R_min + ((R_max − R_min) − H_font)/2 + H_font/2
- * with dominant-baseline="central" (bake + runtime SVG/DXF).
+ * R_target is the fixed geometric mid-radius (R_min + R_max) / 2.
+ * Letter spacing does not affect dy when text-anchor=middle + startOffset=50%
+ * (probe is always the path midpoint).
  *
  * @param {{ emBoxCorrection?: boolean }} [options] ignored — kept for callers
  */
@@ -609,14 +601,14 @@ function computeRingCenteringDyPx(font, text, fontSize, layout, options = {}) {
   const { startOffset, textAnchor, cx, cy } = layout;
   const innerRx = Number(layout.innerRx);
   const outerRx = Number(layout.outerRx);
-  const textLen = measureBetInkHeight(font, fontSize);
   const rTarget =
     Number.isFinite(innerRx) && Number.isFinite(outerRx) && outerRx > innerRx
-      ? ringTargetRadiusPx(innerRx, outerRx, textLen)
-      : ringTargetRadiusPx(SVG_INNER_RX, SVG_OUTER_RX, textLen);
+      ? ringTargetRadiusPx(innerRx, outerRx)
+      : ringTargetRadiusPx(SVG_INNER_RX, SVG_OUTER_RX);
 
   const sampler = createPathGuideSampler(pathGuide);
   const len = sampler.length();
+  // Prefer path midpoint — spacing must not shift the radial center target.
   let midDist = len / 2;
   if (!(textAnchor === 'middle' && String(startOffset || '').trim() === '50%')) {
     midDist = verseTextMidpointDist(
@@ -626,7 +618,7 @@ function computeRingCenteringDyPx(font, text, fontSize, layout, options = {}) {
       fontSize,
       startOffset,
       textAnchor,
-      layout.letterSpacingEm || 0
+      0 // spacing ignored for dy
     );
   }
 

@@ -61,7 +61,7 @@ async function apiFetch(url, options = {}) {
   const headers = skipAuth
     ? { ...extraHeaders }
     : authHeaders(extraHeaders || {});
-  return fetch(url, { ...rest, headers });
+  return fetch(url, { credentials: 'include', ...rest, headers });
 }
 
 /** Look up a client by phone; may return needsConfirmation for new numbers. */

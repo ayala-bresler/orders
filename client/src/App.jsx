@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+﻿import { useEffect, useRef, useState, useCallback } from 'react';
 import IdentifyStep from './components/IdentifyStep.jsx';
 import ExistingOrderStep from './components/ExistingOrderStep.jsx';
 import ProductPicker from './components/ProductPicker.jsx';
 import OrderItemDetailsStep from './components/OrderItemDetailsStep.jsx';
 import TemplateEditor from './components/TemplateEditor.jsx';
 import ConfirmDialog from './components/ConfirmDialog.jsx';
+import StoreAuthGate from './components/StoreAuthGate.jsx';
 import {
   fetchOrderItemDetails,
   deleteOrderItem,
@@ -13,6 +14,8 @@ import {
   logoutSession,
   setUnauthorizedHandler,
 } from './api.js';
+import { fetchStoreMe } from './storeApi.js';
+import { fetchAdminMe } from './adminApi.js';
 import {
   savePersistedUi,
   loadPersistedUi,
@@ -66,6 +69,9 @@ const SESSION_REFRESH_THROTTLE_MS = 2 * 60 * 1000;
 
 export default function App() {
   const isMobile = useMobileLayout();
+  const [storeBooting, setStoreBooting] = useState(true);
+  const [store, setStore] = useState(null);
+  const [admin, setAdmin] = useState(null);
   const [session, setSession] = useState(null);
   const [step, setStep] = useState('identify');
   const [activeItem, setActiveItem] = useState(null);
@@ -81,6 +87,49 @@ export default function App() {
   const [detailsMayPromptDelete, setDetailsMayPromptDelete] = useState(false);
   const detailsRef = useRef(null);
   const lastSessionRefreshRef = useRef(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [storeData, adminData] = await Promise.all([
+          fetchStoreMe(),
+          fetchAdminMe().catch(() => ({ authenticated: false })),
+        ]);
+        if (cancelled) return;
+        if (adminData.authenticated && adminData.admin) {
+          setAdmin(adminData.admin);
+          setStore(null);
+        } else if (storeData.authenticated && storeData.store) {
+          setStore(storeData.store);
+          setAdmin(null);
+        } else {
+          setStore(null);
+          setAdmin(null);
+        }
+      } catch {
+        if (!cancelled) {
+          setStore(null);
+          setAdmin(null);
+        }
+      } finally {
+        if (!cancelled) setStoreBooting(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleStoreAuthenticated = useCallback((nextStore) => {
+    setAdmin(null);
+    setStore(nextStore);
+  }, []);
+
+  const handleAdminAuthenticated = useCallback((nextAdmin) => {
+    setStore(null);
+    setAdmin(nextAdmin || { role: 'admin', displayName: 'מנהל מערכת' });
+  }, []);
 
   const endSession = useCallback(async (message = 'הסשן הסתיים. יש להתחבר מחדש.') => {
     closeAllLiveConnections();
@@ -502,6 +551,38 @@ export default function App() {
     goToEditor(key);
   };
 
+  if (storeBooting) {
+    return (
+      <div className="app" dir="rtl">
+        <main className="main-identify">
+          <div className="notice">טוען…</div>
+        </main>
+      </div>
+    );
+  }
+
+  if (!store && !admin) {
+    return (
+      <div className="app" dir="rtl">
+        <StoreAuthGate
+          onAuthenticated={handleStoreAuthenticated}
+          onAdminAuthenticated={handleAdminAuthenticated}
+        />
+      </div>
+    );
+  }
+
+  if (store?.needsEmailSetup) {
+    return (
+      <div className="app" dir="rtl">
+        <StoreAuthGate
+          initialStep="set_email"
+          onAuthenticated={handleStoreAuthenticated}
+        />
+      </div>
+    );
+  }
+
   if (restoring) {
     return (
       <div className="app" dir="rtl">
@@ -509,7 +590,7 @@ export default function App() {
           <div className="identify-brand">
             <img
               className="identify-logo"
-              src="/img-judaica-logo.png?v=2"
+              src="/img-judaica-logo.png?v=3"
               alt="IMG JUDAICA LTD — אי אמ ג'י יודאיקה בע״מ"
             />
           </div>
@@ -527,7 +608,7 @@ export default function App() {
             <header className={`site-header site-header--${headerMode}`}>
               <img
                 className="site-logo"
-                src="/img-judaica-logo.png?v=2"
+                src="/img-judaica-logo.png?v=3"
                 alt="IMG JUDAICA LTD — אי אמ ג'י יודאיקה בע״מ"
               />
               {showCustomerInHeader ? (
@@ -621,7 +702,9 @@ export default function App() {
                     : undefined
         }
       >
-        {step === 'identify' && <IdentifyStep onIdentified={handleIdentified} />}
+        {step === 'identify' && (
+          <IdentifyStep onIdentified={handleIdentified} isAdmin={Boolean(admin)} />
+        )}
 
         {step === 'resume' && session && (
           <ExistingOrderStep

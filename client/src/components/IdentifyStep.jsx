@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { confirmNewCustomer, identifyCustomer } from '../api.js';
+import MyCustomersPanel from './MyCustomersPanel.jsx';
+import AdminBrowsePanel from './AdminBrowsePanel.jsx';
 
 /**
  * Step 1 — phone-based login. Existing customers use the name from the DB.
  * New phone numbers trigger a confirmation popup before creating a record.
  */
-export default function IdentifyStep({ onIdentified }) {
+export default function IdentifyStep({ onIdentified, isAdmin = false }) {
+  const [panelOpen, setPanelOpen] = useState(Boolean(isAdmin));
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -67,45 +70,88 @@ export default function IdentifyStep({ onIdentified }) {
     setError('');
   };
 
+  const toggleLabel = isAdmin
+    ? panelOpen
+      ? 'סגור ניהול לקוחות/חנויות'
+      : 'ניהול לקוחות וחנויות'
+    : panelOpen
+      ? 'סגור רשימת לקוחות'
+      : 'כל הלקוחות שלי';
+
   return (
     <>
       <div className="identify-brand">
         <img
           className="identify-logo"
-          src="/img-judaica-logo.png?v=2"
+          src="/img-judaica-logo.png?v=3"
           alt="IMG JUDAICA LTD — אי אמ ג'י יודאיקה בע״מ"
         />
       </div>
-      <form className="card identify" onSubmit={submit}>
-        <h2>כניסה למערכת ההזמנות</h2>
 
-        <label className="field">
-          <span>שם מלא</span>
-          <input value={fullName} onChange={(e) => setFullName(e.target.value)} />
-        </label>
-        <label className="field">
-          <span>טלפון *</span>
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            inputMode="tel"
-            placeholder="050-0000000"
-            required
-          />
-        </label>
-        <label className="field">
-          <span>דוא"ל</span>
-          <input value={email} onChange={(e) => setEmail(e.target.value)} inputMode="email" />
-        </label>
-
-        {error && !pendingNew && <div className="notice error inline">{error}</div>}
-
-        <div className="identify-actions">
-          <button className="btn primary identify-submit" type="submit" disabled={busy}>
-            {busy ? 'טוען…' : 'אישור'}
+      <div className={`identify-workspace${panelOpen ? ' is-split' : ''}`}>
+        <div className="identify-toggle-bar">
+          <button
+            type="button"
+            className="btn my-customers-toggle"
+            onClick={() => setPanelOpen((v) => !v)}
+          >
+            {toggleLabel}
           </button>
         </div>
-      </form>
+
+        <div className="identify-split-body">
+          {panelOpen ? (
+            <aside className="identify-search-pane">
+              {isAdmin ? (
+                <AdminBrowsePanel
+                  open={panelOpen}
+                  onOpenChange={setPanelOpen}
+                  showToggle={false}
+                  onSelected={onIdentified}
+                />
+              ) : (
+                <MyCustomersPanel
+                  open={panelOpen}
+                  onOpenChange={setPanelOpen}
+                  showToggle={false}
+                  onSelected={onIdentified}
+                />
+              )}
+            </aside>
+          ) : null}
+
+          <form className="card identify" onSubmit={submit}>
+            <h2>כניסה למערכת ההזמנות</h2>
+
+            <label className="field">
+              <span>שם מלא</span>
+              <input value={fullName} onChange={(e) => setFullName(e.target.value)} />
+            </label>
+            <label className="field">
+              <span>טלפון *</span>
+              <input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                inputMode="tel"
+                placeholder="050-0000000"
+                required
+              />
+            </label>
+            <label className="field">
+              <span>דוא"ל</span>
+              <input value={email} onChange={(e) => setEmail(e.target.value)} inputMode="email" />
+            </label>
+
+            {error && !pendingNew && <div className="notice error inline">{error}</div>}
+
+            <div className="identify-actions">
+              <button className="btn primary identify-submit" type="submit" disabled={busy}>
+                {busy ? 'טוען…' : 'אישור'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
 
       {pendingNew && (
         <div className="confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="new-customer-title">

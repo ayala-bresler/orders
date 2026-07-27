@@ -11,6 +11,14 @@ const templateRoutes = require('./routes/template');
 const orderRoutes = require('./routes/orders');
 const customerRoutes = require('./routes/customers');
 const catalogRoutes = require('./routes/catalog');
+const storeRoutes = require('./stores/storeRoutes');
+const adminRoutes = require('./admin/adminRoutes');
+const {
+  attachStoreSession,
+} = require('./stores/storeSessionMiddleware');
+const {
+  wrapCustomerJsonWithStoreBind,
+} = require('./stores/bindCustomerMiddleware');
 const {
   requireSession,
   refreshHandler,
@@ -22,14 +30,30 @@ const app = express();
 const PUBLIC_DIR =
   process.env.STATIC_DIR || path.join(__dirname, '..', 'public');
 
-app.use(cors());
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+  })
+);
 /** preparedSvg (text → paths) can be several MB */
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '20mb' }));
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
-// Public: identify / confirm (issue session token on success)
-app.use('/api/customers', customerRoutes);
+// System admin (ADMIN_SECRET) — browse all stores / customers
+app.use('/api/admin', adminRoutes);
+
+// Store auth / email / my-customers (HTTP-only cookie session)
+app.use('/api/stores', storeRoutes);
+
+// Public: identify / confirm — wrap with store cookie bind (no change to customers.js)
+app.use(
+  '/api/customers',
+  attachStoreSession,
+  wrapCustomerJsonWithStoreBind,
+  customerRoutes
+);
 
 // Session lifecycle (refresh requires valid token; logout is best-effort)
 app.post('/api/session/refresh', refreshHandler);
@@ -45,7 +69,7 @@ app.use(
   },
   templateRoutes
 );
-app.use('/api/orders', requireSession, orderRoutes);
+app.use('/api/orders', requireSession, attachStoreSession, orderRoutes);
 app.use('/api/products', requireSession, catalogRoutes);
 
 // Production / Docker: serve the Vite client build from server/public.

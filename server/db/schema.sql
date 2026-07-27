@@ -30,6 +30,35 @@ CREATE TABLE IF NOT EXISTS stores (
 CREATE UNIQUE INDEX IF NOT EXISTS stores_store_name_key
     ON stores (store_name);
 
+-- Store auth + SMTP (additive; see also db/migrations/001_store_auth_and_smtp.sql)
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS activation_code      VARCHAR(64)     NULL;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS password_hash        TEXT            NULL;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS percentage           NUMERIC(5, 2)   NULL DEFAULT 0.00;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS store_email          VARCHAR(255)    NULL;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS smtp_host            VARCHAR(255)    NULL;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS smtp_port            INTEGER         NULL;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS smtp_user            VARCHAR(255)    NULL;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS smtp_pass_encrypted  TEXT            NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS stores_activation_code_key
+    ON stores (activation_code)
+ WHERE activation_code IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS store_sessions (
+    session_id      SERIAL          PRIMARY KEY,
+    store_id        INTEGER         NOT NULL
+        REFERENCES stores (store_id) ON DELETE CASCADE,
+    token_hash      VARCHAR(128)    NOT NULL,
+    created_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at    TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS store_sessions_token_hash_key
+    ON store_sessions (token_hash);
+
+CREATE INDEX IF NOT EXISTS idx_store_sessions_store_id
+    ON store_sessions (store_id);
+
 -- -----------------------------------------------------------------------------
 -- categories
 -- -----------------------------------------------------------------------------
@@ -166,6 +195,8 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS email      VARCHAR(100);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS store_id   INTEGER;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS address    TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_customers_store_id ON customers (store_id);
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_customers_phone ON customers (phone);
 

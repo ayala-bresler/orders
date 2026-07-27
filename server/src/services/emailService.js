@@ -303,8 +303,57 @@ async function verifySmtp() {
   throw err;
 }
 
+/**
+ * Send a PDF-only message to an arbitrary address using the system SMTP/Resend.
+ * Used as a reliable delivery path for the store's copy of the order PDF.
+ */
+async function sendPdfToAddress({ to, pdfFilename, pdfContent, meta }) {
+  const cfg = getConfig();
+  const recipient = String(to || '').trim();
+  if (!recipient) {
+    const err = new Error('חסרה כתובת נמען לשליחת PDF.');
+    err.status = 400;
+    throw err;
+  }
+  if (!pdfContent) {
+    const err = new Error('אין תוכן PDF לשליחה.');
+    err.status = 400;
+    throw err;
+  }
+
+  const mail = {
+    from: cfg.from || cfg.user,
+    to: recipient,
+    subject: buildEmailSubject(meta || {}),
+    text: buildEmailText(meta || {}),
+    attachments: [
+      {
+        filename: pdfFilename || 'order-summary.pdf',
+        content: Buffer.isBuffer(pdfContent) ? pdfContent : Buffer.from(pdfContent),
+        contentType: 'application/pdf',
+      },
+    ],
+  };
+
+  if (hasSmtp(cfg)) {
+    const transport = await createTransport(cfg);
+    await transport.sendMail(mail);
+    return { sentTo: recipient, via: 'system-smtp' };
+  }
+  if (cfg.resendApiKey) {
+    await sendViaResend(cfg, mail);
+    return { sentTo: recipient, via: 'system-resend' };
+  }
+  const err = new Error(
+    'הגדרות שליחת מייל מערכתיות חסרות — לא ניתן לשלוח עותק לחנות.'
+  );
+  err.status = 503;
+  throw err;
+}
+
 module.exports = {
   sendDxfEmail,
+  sendPdfToAddress,
   verifySmtp,
   getConfig,
   buildEmailText,

@@ -301,6 +301,32 @@ async function exportDxfEmailHandler(req, res, next) {
       },
     });
 
+    // Allowed extension #2: parallel copy to the authenticated store mailbox (PDF only).
+    // Does not alter the admin/system send above.
+    let storeEmailResult = null;
+    try {
+      const { sendStoreOrderPdfCopy } = require('../stores/storeSmtpService');
+      const storeId = req.store?.storeId || null;
+      storeEmailResult = await sendStoreOrderPdfCopy({
+        storeId,
+        pdfFilename: pdfResult ? `order-${orderId}-item-${itemId}.pdf` : null,
+        pdfContent: pdfResult?.pdfBytes || null,
+        meta: {
+          orderId,
+          customerName: details?.customerName || null,
+          modelName,
+          accessoryLine: accessoryLine || null,
+        },
+      });
+    } catch (storeMailErr) {
+      console.warn('[store-smtp] copy email failed:', storeMailErr.message);
+      storeEmailResult = {
+        skipped: true,
+        reason: 'send_failed',
+        error: storeMailErr.message,
+      };
+    }
+
     const completed = await orderService.completeOrderItem(orderId, itemId);
     // Ensure DXF/PDF/SVG snapshots are gone even if delete missed a name pattern.
     try {
@@ -317,6 +343,7 @@ async function exportDxfEmailHandler(req, res, next) {
       filePaths: null,
       pdfFilePath: null,
       pdfAttached: Boolean(pdfResult?.pdfBytes),
+      storeEmail: storeEmailResult,
       deletedItemId: completed.deletedItemId,
       remainingItems: completed.remainingItems,
       remainingCount: completed.remainingCount,
@@ -325,6 +352,15 @@ async function exportDxfEmailHandler(req, res, next) {
       warnings: [
         ...result.warnings,
         ...(pdfWarning ? [`PDF: ${pdfWarning}`] : []),
+        ...(storeEmailResult?.skipped && storeEmailResult?.error
+          ? [`מייל לחנות לא נשלח: ${storeEmailResult.error}`]
+          : storeEmailResult?.skipped && storeEmailResult?.reason === 'smtp_incomplete'
+            ? ['מייל לחנות לא נשלח: חסר אימייל חנות בהזדהות.']
+            : storeEmailResult?.skipped && storeEmailResult?.reason === 'no_store'
+              ? ['מייל לחנות לא נשלח: אין סשן חנות פעיל.']
+              : storeEmailResult?.skipped && storeEmailResult?.reason === 'no_pdf'
+                ? ['מייל לחנות לא נשלח: לא נוצר קובץ PDF.']
+                : []),
       ],
     });
   } catch (err) {

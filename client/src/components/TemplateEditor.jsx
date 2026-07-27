@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 
 import LiveSvgCanvas from './SvgCanvas.jsx';
 import DynamicSvgForm from './DynamicSvgForm.jsx';
@@ -434,17 +434,17 @@ export default function TemplateEditor({
 
   const plateDiameterLabel = formatPlateDiameterDisplay(meta?.plate_diameter);
 
-  // While values/styles differ from the last bake, show live SVG so font-size
-  // and spacing update immediately; swap back to baked when the server catches up.
-  const currentBakeSig = bakeSignature(values, fontScales);
-  const showBakedPreview = Boolean(bakedSvg && bakeSigRef.current === currentBakeSig);
-  const previewSvg = showBakedPreview ? bakedSvg : masterSvg;
+  // While a newer bake is in flight, keep the last baked SVG on screen
+  // (avoid flashing back to uncentered master on font-size / text edits).
+  const previewSvg = bakedSvg || masterSvg;
+  // Live style overlay only before the first bake exists; after that, wait for swap.
+  const previewFontScales = bakedSvg ? {} : fontScales;
 
   return (
     <div className="verse-page">
       <img
         className="verse-print-logo"
-        src="/img-judaica-logo.png?v=2"
+        src="/img-judaica-logo.png?v=3"
         alt="IMG JUDAICA LTD — אי אמ ג'י יודאיקה בע״מ"
       />
       <div className="editor verse-page-body">
@@ -523,9 +523,9 @@ export default function TemplateEditor({
               <LiveSvgCanvas
                 ref={canvasRef}
                 masterSvg={previewSvg}
-                fields={showBakedPreview ? [] : fields}
-                values={showBakedPreview ? {} : values}
-                fontScales={showBakedPreview ? {} : fontScales}
+                fields={bakedSvg ? [] : fields}
+                values={bakedSvg ? {} : values}
+                fontScales={previewFontScales}
                 zoom={previewZoom}
                 cropPreview
               />

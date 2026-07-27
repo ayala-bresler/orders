@@ -10,6 +10,10 @@
     "dev": "node --watch init.js",
     "db:schema": "node scripts/apply-schema.js",
     "db:init": "node scripts/apply-schema.js",
+    "db:migrate-stores": "node scripts/apply-store-migration.js",
+    "db:migrate-stores-delta": "node scripts/apply-store-delta.js",
+    "db:clear-store-smtp": "node scripts/clear-store-smtp.js",
+    "db:create-store": "node scripts/create-store.js",
     "db:seed": "node scripts/apply-seed.js",
     "verify": "node scripts/verify-svg.js",
     "split-quarters": "node scripts/split-svg-quarters.js"
