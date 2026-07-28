@@ -188,11 +188,12 @@ body {
   .verse-form-scroll .field-group {
     flex: 0 0 auto;
     min-height: auto;
+    overflow: visible;
   }
 
   .verse-form-scroll .verse-field {
     flex: 0 0 auto;
-    min-height: auto;
+    min-height: 4.5rem;
   }
 }
 
@@ -321,15 +322,23 @@ body {
   }
 
   .verse-form-scroll {
-    overflow: visible;
+    overflow-x: hidden;
+    overflow-y: auto;
     flex: 0 0 auto;
-    min-height: auto;
+    min-height: 0;
+    max-height: min(52vh, 480px);
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding-inline-end: 2px;
   }
 
   .verse-page .verse-form,
-  .dynamic-svg-form {
+  .dynamic-svg-form,
+  .dynamic-svg-form.layout-corners-stack {
     flex: 0 0 auto;
     min-height: auto;
+    height: auto;
+    overflow: visible;
   }
 
   .verse-page .corner-group,
@@ -337,17 +346,70 @@ body {
   .dynamic-svg-form.layout-corners-stack .field-group {
     flex: 0 0 auto;
     min-height: auto;
+    height: auto;
+    overflow: visible;
   }
 
   .verse-page .verse-field,
   .dynamic-svg-form .verse-field,
   .dynamic-svg-form.layout-corners-stack .verse-field {
     flex: 0 0 auto;
-    min-height: auto;
+    min-height: 3.4rem;
+    height: auto;
+    overflow: visible;
+    align-items: stretch;
+    gap: 6px;
+    container-type: normal;
+    /* each verse gets its own frame; label sits on the top border */
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 6px 6px;
+    margin-top: 6px;
+    background: var(--panel);
   }
 
-  .dynamic-svg-form.layout-corners-stack .verse-field textarea {
-    min-height: auto;
+  /*
+   * Mobile: עליון/תחתון on the top border (legend style),
+   * top-inline-start corner — does not consume input width/height.
+   */
+  .dynamic-svg-form.layout-corners-stack .verse-field-sublabel {
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    inset-inline-start: 10px;
+    transform: translateY(-50%);
+    display: block;
+    flex: none;
+    min-width: 0;
+    width: auto;
+    max-width: calc(100% - 20px);
+    margin: 0;
+    padding: 0 6px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.15;
+    color: var(--accent, #8a6d3b);
+    background: var(--panel, #fff);
+    border-radius: 0;
+    pointer-events: none;
+    align-self: auto;
+    text-align: start;
+    white-space: nowrap;
+  }
+
+  .dynamic-svg-form.layout-corners-stack .verse-field textarea,
+  .verse-page .verse-field textarea {
+    min-height: 2.9rem;
+    height: auto;
+    overflow-y: auto;
+    padding-top: 6px;
+  }
+
+  .verse-page .font-controls {
+    flex: 0 0 46px;
+    align-self: stretch;
+    max-height: none;
+    min-height: 2.9rem;
   }
 
   .verse-preview-pane {
