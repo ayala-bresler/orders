@@ -11,7 +11,10 @@
 const { query } = require('../db');
 const { modelSkuPrefix } = require('../utils/modelSku');
 const { modelImageExists } = require('./modelImageService');
-const { isCrownOnlyModel } = require('../config/modelScopes');
+const {
+  isCrownOnlyModel,
+  isSpecialTextModel,
+} = require('../config/modelScopes');
 
 // The only category a client may order from.
 const CLIENT_CATEGORY_ID = Number(process.env.CLIENT_CATEGORY_ID || 4);
@@ -92,7 +95,7 @@ async function productSupportsVerses(productCode) {
   return rows[0];
 }
 
-/** All models for order-details dropdowns (includes crown_only flag). */
+/** All models for order-details dropdowns (includes scope flags). */
 async function listModels() {
   const { rows } = await query(
     `SELECT model_code, model_name
@@ -103,7 +106,29 @@ async function listModels() {
     model_code: row.model_code,
     model_name: row.model_name,
     crown_only: isCrownOnlyModel(row.model_code),
+    special_text: isSpecialTextModel(row.model_code),
   }));
+}
+
+/**
+ * Fallback variant for special models (e.g. 10) that may lack a dedicated
+ * product_variants row — borrow any עץ חיים / category product so the line
+ * can still be created with model_code overridden.
+ */
+async function getFallbackVerseVariant(categoryId = CLIENT_CATEGORY_ID) {
+  const { rows } = await query(
+    `SELECT v.sku, v.product_code, v.product_type_code, t.type_name,
+            v.model_code, m.model_name, v.size_code
+       FROM product_variants v
+       JOIN products p ON p.product_code = v.product_code
+       LEFT JOIN product_types t ON t.product_type_code = v.product_type_code
+       LEFT JOIN models m ON m.model_code = v.model_code
+      WHERE p.category_id = $1
+      ORDER BY (t.type_name = $2) DESC, v.sku
+      LIMIT 1`,
+    [categoryId, VERSE_TYPE_NAME]
+  );
+  return rows[0] || null;
 }
 
 /**
@@ -134,22 +159,42 @@ async function listSelectableModels(categoryId = CLIENT_CATEGORY_ID) {
     [categoryId, VERSE_TYPE_NAME]
   );
 
-  return rows
-    .filter((row) => !isCrownOnlyModel(row.model_code))
-    .map((row) => {
-      const short_sku = modelSkuPrefix(row.model_code);
-      return {
-        model_code: row.model_code,
-        model_name: row.model_name,
-        short_sku,
-        product_code: row.product_code || null,
-        sku: row.sku || null,
-        size_code: row.size_code || null,
-        supports_verses: Boolean(row.supports_verses),
-        has_image: modelImageExists(short_sku),
-        crown_only: false,
-      };
+  const mapped = [];
+  for (const row of rows) {
+    if (isCrownOnlyModel(row.model_code)) continue;
+
+    const special = isSpecialTextModel(row.model_code);
+    const short_sku = modelSkuPrefix(row.model_code);
+    let product_code = row.product_code || null;
+    let sku = row.sku || null;
+    let size_code = row.size_code || null;
+    let supports_verses = Boolean(row.supports_verses);
+
+    // Special (מיוחד) may have no variant — still show in picker and stay orderable.
+    if (special && !product_code) {
+      const fallback = await getFallbackVerseVariant(categoryId);
+      if (fallback) {
+        product_code = fallback.product_code;
+        sku = fallback.sku;
+        size_code = fallback.size_code;
+        supports_verses = true;
+      }
+    }
+
+    mapped.push({
+      model_code: row.model_code,
+      model_name: row.model_name,
+      short_sku,
+      product_code,
+      sku,
+      size_code,
+      supports_verses,
+      has_image: special ? false : modelImageExists(short_sku),
+      crown_only: false,
+      special_text: special,
     });
+  }
+  return mapped;
 }
 
 /**
@@ -169,7 +214,24 @@ async function getVariantByModel(modelCode, categoryId = CLIENT_CATEGORY_ID) {
       LIMIT 1`,
     [modelCode, categoryId, VERSE_TYPE_NAME]
   );
-  return rows[0] || null;
+  if (rows[0]) return rows[0];
+
+  // Special text model (10): allow ordering even without a dedicated variant row.
+  if (isSpecialTextModel(modelCode)) {
+    const fallback = await getFallbackVerseVariant(categoryId);
+    if (!fallback) return null;
+    const { rows: nameRows } = await query(
+      `SELECT model_code, model_name FROM models WHERE model_code = $1 LIMIT 1`,
+      [modelCode]
+    );
+    return {
+      ...fallback,
+      model_code: nameRows[0]?.model_code || modelCode,
+      model_name: nameRows[0]?.model_name || 'מיוחד',
+    };
+  }
+
+  return null;
 }
 
 /** Selectable plate diameters for laser templates (product_sizes). Max size: 15. */
@@ -196,5 +258,6 @@ module.exports = {
   listProductSizes,
   getPrimaryVariant,
   getVariantByModel,
+  getFallbackVerseVariant,
   productSupportsVerses,
 };

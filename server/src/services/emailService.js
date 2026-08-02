@@ -312,10 +312,14 @@ async function verifySmtp() {
 }
 
 /**
- * Send a PDF-only message to an arbitrary address using the system SMTP/Resend.
- * Used as a reliable delivery path for the store's copy of the order PDF.
+ * Send PDF attachment(s) to an arbitrary address using the system SMTP/Resend.
+ * Used for the store copy: order-form PDF + verses-print PDF.
+ *
+ * Accepts either:
+ *   - pdfFiles: [{ filename, content }, ...]
+ *   - or legacy single: pdfFilename + pdfContent
  */
-async function sendPdfToAddress({ to, pdfFilename, pdfContent, meta }) {
+async function sendPdfToAddress({ to, pdfFilename, pdfContent, pdfFiles, meta }) {
   const cfg = getConfig();
   const recipient = String(to || '').trim();
   if (!recipient) {
@@ -323,34 +327,51 @@ async function sendPdfToAddress({ to, pdfFilename, pdfContent, meta }) {
     err.status = 400;
     throw err;
   }
-  if (!pdfContent) {
+
+  const files = Array.isArray(pdfFiles)
+    ? pdfFiles.filter((f) => f && f.content)
+    : pdfContent
+      ? [{ filename: pdfFilename, content: pdfContent }]
+      : [];
+
+  if (!files.length) {
     const err = new Error('אין תוכן PDF לשליחה.');
     err.status = 400;
     throw err;
   }
+
+  const attachments = files.map((file, idx) => ({
+    filename: file.filename || `order-${idx + 1}.pdf`,
+    content: Buffer.isBuffer(file.content)
+      ? file.content
+      : Buffer.from(file.content),
+    contentType: 'application/pdf',
+  }));
 
   const mail = {
     from: cfg.from || cfg.user,
     to: recipient,
     subject: buildEmailSubject(meta || {}),
     text: buildEmailText(meta || {}),
-    attachments: [
-      {
-        filename: pdfFilename || 'order-summary.pdf',
-        content: Buffer.isBuffer(pdfContent) ? pdfContent : Buffer.from(pdfContent),
-        contentType: 'application/pdf',
-      },
-    ],
+    attachments,
   };
 
   if (hasSmtp(cfg)) {
     const transport = await createTransport(cfg);
     await transport.sendMail(mail);
-    return { sentTo: recipient, via: 'system-smtp' };
+    return {
+      sentTo: recipient,
+      via: 'system-smtp',
+      attachmentCount: attachments.length,
+    };
   }
   if (cfg.resendApiKey) {
     await sendViaResend(cfg, mail);
-    return { sentTo: recipient, via: 'system-resend' };
+    return {
+      sentTo: recipient,
+      via: 'system-resend',
+      attachmentCount: attachments.length,
+    };
   }
   const err = new Error(
     'הגדרות שליחת מייל מערכתיות חסרות — לא ניתן לשלוח עותק לחנות.'

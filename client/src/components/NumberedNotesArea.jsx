@@ -13,6 +13,7 @@ export default function NumberedNotesArea({
   className = '',
   placeholder = '',
   maxLines = MAX_ORDER_NOTE_LINES,
+  required = false,
 }) {
   const lines = useMemo(() => splitLines(value, maxLines), [value, maxLines]);
 
@@ -71,6 +72,8 @@ export default function NumberedNotesArea({
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
         rows={maxLines}
+        required={required}
+        aria-required={required || undefined}
         aria-label={`הערות, עד ${maxLines} שורות`}
       />
     </div>

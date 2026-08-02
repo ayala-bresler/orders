@@ -2,6 +2,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { fetchSelectableModels, modelImageUrl, addOrderItem } from '../api.js';
 import { IconBack } from './Icons.jsx';
 import { mainModelName } from '../utils/orderItemDisplay.js';
+import {
+  isSpecialTextModel,
+  SPECIAL_MODEL_DISPLAY_NAME,
+} from '../utils/modelScopes.js';
 
 const GRID_GAP = 12;
 const BANNER_HEIGHT = 34;
@@ -88,7 +92,8 @@ export default function ProductPicker({
   }, [models.length, status]);
 
   const choose = async (model) => {
-    if (!model.product_code) return;
+    const special = Boolean(model.special_text) || isSpecialTextModel(model.model_code);
+    if (!model.product_code && !special) return;
     setBusyCode(model.model_code);
     setError('');
     try {
@@ -149,9 +154,6 @@ export default function ProductPicker({
                 }
               >
                 {mainModelName(item)}
-                {item.status === 'completed' ? (
-                  <span className="model-picker-sent-tag">נשלחה</span>
-                ) : null}
               </button>
             ))}
           </div>
@@ -164,14 +166,19 @@ export default function ProductPicker({
         ref={gridRef}
         className="model-picker-grid"
         style={{
-          gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`,
-          gridTemplateRows: `repeat(${gridRows}, minmax(0, 1fr))`,
+          '--picker-cols': gridCols,
+          '--picker-rows': gridRows,
         }}
       >
         {models.map((model) => {
-          const selectable = Boolean(model.product_code);
+          const special = Boolean(model.special_text) || isSpecialTextModel(model.model_code);
+          const selectable = Boolean(model.product_code) || special;
           const busy = busyCode === model.model_code;
-          const imgSrc = model.has_image ? modelImageUrl(model.short_sku) : null;
+          const imgSrc =
+            !special && model.has_image ? modelImageUrl(model.short_sku) : null;
+          const label = special
+            ? SPECIAL_MODEL_DISPLAY_NAME
+            : model.model_name;
 
           return (
             <button
@@ -179,29 +186,41 @@ export default function ProductPicker({
               key={model.model_code}
               className={`model-card${selectable ? '' : ' model-card--disabled'}${
                 busy ? ' model-card--busy' : ''
-              }`}
+              }${special ? ' model-card--special-text' : ''}`}
               disabled={!selectable || busy}
               onClick={() => choose(model)}
-              title={selectable ? model.model_name : 'דגם זה אינו זמין להזמנה כרגע'}
+              title={
+                selectable
+                  ? label
+                  : 'דגם זה אינו זמין להזמנה כרגע'
+              }
             >
-              <div className="model-card-banner">
-                <span className="model-card-title">{model.model_name}</span>
-              </div>
-              <div className="model-card-photo-wrap">
-                {imgSrc ? (
-                  <img
-                    className="model-card-photo"
-                    src={imgSrc}
-                    alt=""
-                    loading="lazy"
-                    draggable={false}
-                  />
-                ) : (
-                  <div className="model-card-photo model-card-photo--placeholder">
-                    <span className="model-card-sku">{model.short_sku}</span>
+              {special ? (
+                <div className="model-card-special-text" aria-hidden="false">
+                  <span className="model-card-special-label">{label}</span>
+                </div>
+              ) : (
+                <>
+                  <div className="model-card-banner">
+                    <span className="model-card-title">{model.model_name}</span>
                   </div>
-                )}
-              </div>
+                  <div className="model-card-photo-wrap">
+                    {imgSrc ? (
+                      <img
+                        className="model-card-photo"
+                        src={imgSrc}
+                        alt=""
+                        loading="lazy"
+                        draggable={false}
+                      />
+                    ) : (
+                      <div className="model-card-photo model-card-photo--placeholder">
+                        <span className="model-card-sku">{model.short_sku}</span>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
               {busy && <span className="model-card-busy">מוסיף…</span>}
             </button>
           );

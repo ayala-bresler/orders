@@ -7,6 +7,7 @@ import {
   isCrownOnlyModel,
   productSelectableModels,
   crownSelectableModels,
+  orderNotesRequiredForItem,
 } from '../utils/modelScopes.js';
 import EtzChaimMeasuresDiagram from './EtzChaimMeasuresDiagram.jsx';
 import ModelSelect from './ModelSelect.jsx';
@@ -246,14 +247,15 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
     const synced = syncItemSizeFields(raw, productSizes);
     const out = { ...synced };
     if (out.model) out.model = resolveModelCode(out.model, models) || out.model;
-    // Crown-only models (09/10) must never be saved as the main product דגם.
+    // Crown-only (09) must never be saved as the main product דגם.
+    // Special text model (10 / מיוחד) is allowed everywhere.
     if (out.model && isCrownOnlyModel(out.model)) {
       out.model = null;
     }
     for (const key of ['crown_model', 'breastplate_model', 'pointer_model']) {
       if (out[key]) out[key] = resolveModelCode(out[key], models) || out[key];
     }
-    // טס / יד cannot keep a crown-only model code.
+    // טס / יד cannot keep a crown-only model code (09); מיוחד (10) is allowed.
     for (const key of ['breastplate_model', 'pointer_model']) {
       if (out[key] && isCrownOnlyModel(out[key])) {
         out[key] = null;
@@ -265,6 +267,13 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
     if (out.has_pointer && !out.pointer_model && main) out.pointer_model = main;
     return out;
   };
+
+  const notesRequired = useMemo(
+    () => orderNotesRequiredForItem(normalizeItemForSave(item)),
+    // normalize depends on models/productSizes; item is the live source
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional live check
+    [item, models, productSizes]
+  );
 
   const isDirty = useMemo(() => {
     const curItem = normalizeItemForSave(item);
@@ -291,6 +300,16 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
         quantity: item.quantity === '' || item.quantity == null ? 1 : item.quantity,
         price_at_purchase: item.price_at_purchase === '' || item.price_at_purchase == null ? 0 : item.price_at_purchase,
       });
+      if (orderNotesRequiredForItem(payloadItem)) {
+        const notes = String(order.order_notes || '').trim();
+        if (!notes) {
+          const err = new Error(
+            'נבחר דגם מיוחד — יש למלא הערות עם פרטי הבחירה לפני השמירה.'
+          );
+          setError(err.message);
+          throw err;
+        }
+      }
       const result = await saveOrderItemDetails(orderId, itemId, { order, item: payloadItem });
       const nextOrder = result.order || order;
       const nextItem = result.item || payloadItem;
@@ -546,6 +565,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
                     value={fieldValue(order, 'order_notes')}
                     onChange={(e) => changeOrder('order_notes', e.target.value)}
                     placeholder="הקלד הערה…"
+                    required={notesRequired}
                   />
                 </div>
               </section>

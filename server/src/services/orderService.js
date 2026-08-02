@@ -29,7 +29,15 @@ async function assertItemSupportsVerses(orderId, orderItemId) {
   }
   return details;
 }
-const { ORDER_DETAIL_FIELDS, ITEM_DETAIL_FIELDS, ORDER_KEYS, ITEM_KEYS, isDetailsComplete, clampOrderNotes } = require('../config/orderFields');
+const {
+  ORDER_DETAIL_FIELDS,
+  ITEM_DETAIL_FIELDS,
+  ORDER_KEYS,
+  ITEM_KEYS,
+  isDetailsComplete,
+  clampOrderNotes,
+  assertSpecialModelNotes,
+} = require('../config/orderFields');
 const svgService = require('./svgService');
 const templateResolver = require('./templateResolver');
 const { formatModelLabel } = require('../utils/modelSku');
@@ -428,6 +436,13 @@ async function saveOrderItemDetails(orderId, orderItemId, { order: orderInput = 
     const safeItem = normalizeItemForSave(syncedItem);
     if (safeItem.quantity < 1 || safeItem.quantity > 99) {
       const err = new Error('כמות חייבת להיות בין 1 ל-99.');
+      err.status = 400;
+      throw err;
+    }
+
+    const notesErr = assertSpecialModelNotes(nextOrder, safeItem);
+    if (notesErr) {
+      const err = new Error(notesErr);
       err.status = 400;
       throw err;
     }

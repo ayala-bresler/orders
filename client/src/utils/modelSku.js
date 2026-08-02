@@ -1,3 +1,8 @@
+import {
+  isSpecialTextModel,
+  SPECIAL_MODEL_DISPLAY_NAME,
+} from './modelScopes.js';
+
 const CATEGORY_PREFIX = '4';
 
 function padCode(code) {
@@ -14,6 +19,10 @@ export function modelSkuPrefix(modelCode) {
 export function formatModelLabel(modelCode, modelName) {
   const prefix = modelSkuPrefix(modelCode);
   const name = String(modelName || '').trim();
+  if (isSpecialTextModel(modelCode)) {
+    const special = name || SPECIAL_MODEL_DISPLAY_NAME;
+    return prefix ? `${prefix} · ${special}` : special;
+  }
   if (prefix && name) return `${prefix} · ${name}`;
   return prefix || name || '';
 }

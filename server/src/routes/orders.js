@@ -55,10 +55,14 @@ router.post('/:orderId/items', async (req, res, next) => {
       return res.status(404).json({ error: 'המוצר לא נמצא.' });
     }
 
+    // Prefer the requested model_code (important for special model 10 fallbacks).
+    const resolvedModel =
+      modelCode || variant?.model_code || null;
+
     const item = await orderService.createOrderItem(orderId, {
       product_code: resolvedProductCode,
       quantity,
-      model: variant?.model_code || modelCode || null,
+      model: resolvedModel,
       size_code: body.size_code || '12',
       plate_diameter: body.plate_diameter ?? 12,
       product_type_code: body.product_type_code || variant?.product_type_code || '01',
@@ -333,20 +337,30 @@ async function exportDxfEmailHandler(req, res, next) {
       meta: mailMeta,
     });
 
-    // Store mailbox: verses print page PDF only (portrait plate layout).
+    // Store mailbox: order-form PDF + verses-print PDF (two files).
     let storeEmailResult = null;
     try {
       const { sendStoreOrderPdfCopy } = require('../stores/storeSmtpService');
       const storeId = req.store?.storeId || null;
+      const storePdfFiles = [];
+      if (pdfResult?.pdfBytes) {
+        storePdfFiles.push({
+          filename: `order-${orderId}-item-${itemId}.pdf`,
+          content: pdfResult.pdfBytes,
+        });
+      }
+      if (versesPrintPdf?.pdfBytes) {
+        storePdfFiles.push({
+          filename: `order-${orderId}-item-${itemId}-verses.pdf`,
+          content: versesPrintPdf.pdfBytes,
+        });
+      }
       storeEmailResult = await sendStoreOrderPdfCopy({
         storeId,
-        pdfFilename: versesPrintPdf
-          ? `order-${orderId}-item-${itemId}-verses.pdf`
-          : null,
-        pdfContent: versesPrintPdf?.pdfBytes || null,
+        pdfFiles: storePdfFiles,
         meta: {
           ...mailMeta,
-          kind: 'verses-print',
+          kind: 'store-order-copy',
         },
       });
     } catch (storeMailErr) {
@@ -393,10 +407,12 @@ async function exportDxfEmailHandler(req, res, next) {
             : storeEmailResult?.skipped && storeEmailResult?.reason === 'no_store'
               ? ['מייל לחנות לא נשלח: אין סשן חנות פעיל.']
               : storeEmailResult?.skipped && storeEmailResult?.reason === 'no_pdf'
-                ? ['מייל לחנות לא נשלח: לא נוצר קובץ PDF פסוקים.']
+                ? ['מייל לחנות לא נשלח: לא נוצרו קבצי PDF לחנות.']
                 : []),
       ],
+      storeOrderPdfAttached: Boolean(pdfResult?.pdfBytes),
       storeVersesPdfAttached: Boolean(versesPrintPdf?.pdfBytes),
+      storeAttachmentCount: storeEmailResult?.attachmentCount || 0,
     });
   } catch (err) {
     if (!err.status && err.message) {

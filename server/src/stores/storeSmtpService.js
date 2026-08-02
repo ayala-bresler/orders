@@ -1,7 +1,10 @@
 'use strict';
 
 /**
- * Send order verses-print PDF to the store mailbox via system SMTP.
+ * Send order PDFs to the store mailbox via system SMTP.
+ * Store receives two files when available:
+ *   1) order-form PDF (filled table)
+ *   2) verses-print PDF (plate layout)
  * Stores only need store_email — no per-store HOST/PORT/password.
  * Admin DXF mail is separate and does not use this path.
  */
@@ -9,11 +12,33 @@
 const { findStoreById } = require('./storeAuthService');
 const { sendPdfToAddress } = require('../services/emailService');
 
-async function sendStoreOrderPdfCopy({ storeId, pdfFilename, pdfContent, meta }) {
+/**
+ * @param {{
+ *   storeId: number|string|null,
+ *   pdfFiles?: { filename: string, content: Buffer|Uint8Array|string }[],
+ *   pdfFilename?: string,
+ *   pdfContent?: Buffer|Uint8Array|string|null,
+ *   meta?: object,
+ * }} opts
+ */
+async function sendStoreOrderPdfCopy({
+  storeId,
+  pdfFiles,
+  pdfFilename,
+  pdfContent,
+  meta,
+}) {
   if (!storeId) {
     return { skipped: true, reason: 'no_store' };
   }
-  if (!pdfContent) {
+
+  const files = Array.isArray(pdfFiles)
+    ? pdfFiles.filter((f) => f && f.content)
+    : pdfContent
+      ? [{ filename: pdfFilename, content: pdfContent }]
+      : [];
+
+  if (!files.length) {
     return { skipped: true, reason: 'no_pdf' };
   }
 
@@ -34,14 +59,14 @@ async function sendStoreOrderPdfCopy({ storeId, pdfFilename, pdfContent, meta })
   try {
     const result = await sendPdfToAddress({
       to: storeEmail,
-      pdfFilename,
-      pdfContent,
+      pdfFiles: files,
       meta,
     });
     return {
       skipped: false,
       sentTo: result.sentTo,
       via: result.via,
+      attachmentCount: result.attachmentCount || files.length,
     };
   } catch (err) {
     console.warn('[store-email] send failed:', err.message);

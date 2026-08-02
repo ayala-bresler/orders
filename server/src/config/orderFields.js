@@ -1,5 +1,7 @@
 'use strict';
 
+const { orderNotesRequiredForItem } = require('./modelScopes');
+
 /**
  * Editable columns on orders (header-level).
  * Matches the live `product_management.orders` table — no delivery_method /
@@ -76,7 +78,19 @@ function isDetailsComplete(order, item) {
     const val = order?.[field.key];
     if (val == null || String(val).trim() === '') return false;
   }
+  // Special model (מיוחד / 10) requires non-empty order notes.
+  if (orderNotesRequiredForItem(item)) {
+    if (!order?.order_notes || String(order.order_notes).trim() === '') {
+      return false;
+    }
+  }
   return hasOrderHeaderData(order) || hasItemManufacturingData(item);
+}
+
+function assertSpecialModelNotes(order, item) {
+  if (!orderNotesRequiredForItem(item)) return null;
+  if (order?.order_notes && String(order.order_notes).trim() !== '') return null;
+  return 'נבחר דגם מיוחד — יש למלא הערות עם פרטי הבחירה.';
 }
 
 module.exports = {
@@ -87,4 +101,5 @@ module.exports = {
   MAX_ORDER_NOTE_LINES,
   clampOrderNotes,
   isDetailsComplete,
+  assertSpecialModelNotes,
 };
