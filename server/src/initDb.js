@@ -15,6 +15,8 @@ async function initDb() {
   const sql = fs.readFileSync(SCHEMA_PATH, 'utf8');
   console.log(`[init] applying schema: ${SCHEMA_PATH}`);
   await pool.query(sql);
+  const { ensureOrderItemStatusColumn } = require('./utils/ensureOrderItemStatus');
+  await ensureOrderItemStatusColumn();
   console.log('[init] schema applied successfully.');
 }
 

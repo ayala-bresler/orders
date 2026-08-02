@@ -96,7 +96,14 @@ function parse(svgString) {
 }
 
 function readHref(node) {
-  return node.getAttribute('xlink:href') || node.getAttribute('href') || '';
+  if (!node || typeof node.getAttribute !== 'function') return '';
+  return (
+    (typeof node.getAttributeNS === 'function' &&
+      node.getAttributeNS('http://www.w3.org/1999/xlink', 'href')) ||
+    node.getAttribute('xlink:href') ||
+    node.getAttribute('href') ||
+    ''
+  );
 }
 
 function setTextContent(doc, node, value) {
@@ -106,11 +113,12 @@ function setTextContent(doc, node, value) {
 
 function indexEditableNodes(doc, fieldByHref) {
   const map = new Map();
+  const hrefMap = fieldByHref && typeof fieldByHref === 'object' ? fieldByHref : {};
   const nodes = doc.getElementsByTagName('textPath');
   for (let i = 0; i < nodes.length; i += 1) {
     const node = nodes.item(i);
     const href = readHref(node);
-    if (href && fieldByHref[href]) {
+    if (href && hrefMap[href]) {
       map.set(href, node);
     }
   }
@@ -190,8 +198,17 @@ function validateValues(input, templateContext) {
 
 function validateFontScales(input, templateContext) {
   const ctx = resolveContext(templateContext);
-  const { styles, errors } = validateStylesMap(input, ctx.fieldByKey);
-  return { scales: styles, errors };
+  const {
+    splitFontScalesPayload,
+    joinFontScalesPayload,
+  } = require('../config/cornerSymbols');
+  const { styles: styleInput, cornerSymbols } = splitFontScalesPayload(input);
+  const { styles, errors } = validateStylesMap(styleInput, ctx.fieldByKey);
+  return {
+    scales: joinFontScalesPayload(styles, cornerSymbols),
+    errors,
+    cornerSymbols,
+  };
 }
 
 function setTextFontSize(textEl, sizePx) {
@@ -351,17 +368,33 @@ function renderCustomizedSvg(values = {}, fontScales = {}, templateContext) {
   const nodeMap = indexEditableNodes(doc, ctx.fieldByHref);
   const canonical = loadCanonicalVerseDefaultsByKey();
 
-  // Fill every verse field: request values when provided, else canonical 11–15 defaults.
+  // Fill every verse field: non-empty request values win; otherwise canonical defaults.
+  // Empty strings fall back to defaults so placeholders / blank form fields still export text.
   for (const field of ctx.fields) {
-    const text = Object.prototype.hasOwnProperty.call(clean, field.key)
+    const provided = Object.prototype.hasOwnProperty.call(clean, field.key)
       ? clean[field.key]
-      : canonical[field.key] || field.defaultText || '';
+      : undefined;
+    const text =
+      provided != null && String(provided).trim() !== ''
+        ? provided
+        : canonical[field.key] || field.defaultText || provided || '';
     const node = nodeMap.get(field.href);
     if (!node) continue;
     applyVerseLayout(doc, node, text, cleanScales, field);
   }
 
   applyDynamicRingDy(doc, ctx, cleanScales);
+
+  try {
+    const { splitFontScalesPayload } = require('../config/cornerSymbols');
+    const { applyCornerSymbolSeparators } = require('../export/cornerSymbolSeparators');
+    const { styles: styleOnly, cornerSymbols } = splitFontScalesPayload(cleanScales);
+    applyCornerSymbolSeparators(doc, ctx, clean, styleOnly, cornerSymbols, canonical);
+  } catch (err) {
+    // Never fail the whole SVG over separator decoration.
+    console.error('[cornerSymbols] apply failed:', err && err.message ? err.message : err);
+    if (err && err.stack) console.error(err.stack);
+  }
 
   return new XMLSerializer().serializeToString(doc);
 }

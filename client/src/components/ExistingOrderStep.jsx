@@ -5,6 +5,7 @@ import { mainModelName } from '../utils/orderItemDisplay.js';
 import { modelSkuPrefix } from '../utils/modelSku.js';
 import { modelImageUrl } from '../api.js';
 import { IconTrash } from './Icons.jsx';
+import OrderSentMarker from './OrderSentMarker.jsx';
 
 const GRID_GAP = 16;
 /** Cap so one product isn't huge; more products never exceed this. */
@@ -143,17 +144,18 @@ export default function ExistingOrderStep({
         {items.map((item) => {
           const imgSrc = itemImageSrc(item);
           const showImg = imgSrc && !brokenImages.has(item.order_item_id);
+          const completed = item.status === 'completed';
           return (
             <div
-              className="resume-card"
+              className={`resume-card${completed ? ' resume-card--completed' : ''}`}
               key={item.order_item_id}
               style={{ width: layout.size, height: layout.size }}
             >
               <button
                 type="button"
-                className="resume-card-enter"
+                className={`resume-card-enter${completed ? ' resume-card-enter--static' : ''}`}
                 onClick={() => onContinueItem(item)}
-                title="כניסה להזמנה"
+                title={completed ? 'ההזמנה נשלחה — צפייה' : 'כניסה להזמנה'}
               >
                 <div className="resume-card-photo-wrap">
                   {showImg ? (
@@ -171,7 +173,8 @@ export default function ExistingOrderStep({
                 </div>
                 <OrderItemSummary item={item} />
               </button>
-              {onDeleteItem && (
+              {completed ? <OrderSentMarker variant="card" /> : null}
+              {onDeleteItem ? (
                 <button
                   type="button"
                   className="resume-card-delete"
@@ -181,7 +184,7 @@ export default function ExistingOrderStep({
                 >
                   <IconTrash />
                 </button>
-              )}
+              ) : null}
             </div>
           );
         })}

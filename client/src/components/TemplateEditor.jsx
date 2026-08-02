@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import LiveSvgCanvas from './SvgCanvas.jsx';
 import DynamicSvgForm from './DynamicSvgForm.jsx';
@@ -33,7 +33,12 @@ import {
   clearVerseDraft,
 } from '../utils/verseDraftPersist.js';
 import { takeVerseBakeCache } from '../utils/verseBakePrefetch.js';
+import {
+  readCornerSymbolsFromFontScales,
+  withCornerSymbolPatch,
+} from '../utils/cornerSymbols.js';
 import { IconBack, IconPrint, IconReset, IconSave, IconUndo } from './Icons.jsx';
+import OrderSentMarker from './OrderSentMarker.jsx';
 
 function bakeSignature(values, fontScales) {
   return JSON.stringify({ values, fontScales });
@@ -43,6 +48,7 @@ export default function TemplateEditor({
   orderId,
   itemId,
   templateKey = '',
+  orderSent = false,
   onEditOrderDetails,
   onOrderComplete,
 }) {
@@ -70,8 +76,15 @@ export default function TemplateEditor({
   const [exportingDxf, setExportingDxf] = useState(false);
   const [saveAcknowledged, setSaveAcknowledged] = useState(false);
   const [orderCompleted, setOrderCompleted] = useState(false);
-  const [previewZoom, setPreviewZoom] = useState(getDefaultPreviewZoom);
-  const [defaultPreviewZoom, setDefaultPreviewZoom] = useState(getDefaultPreviewZoom);
+  const [previewZoom, setPreviewZoom] = useState(() => getDefaultPreviewZoom());
+  const [defaultPreviewZoom, setDefaultPreviewZoom] = useState(() => getDefaultPreviewZoom());
+
+  // Always open the verses preview at 100% (layout-aware default).
+  useEffect(() => {
+    const nextDefault = getDefaultPreviewZoom();
+    setDefaultPreviewZoom(nextDefault);
+    setPreviewZoom(nextDefault);
+  }, [orderId, itemId, templateKey]);
 
   useEffect(() => {
     const mq = window.matchMedia(MOBILE_LAYOUT_MQ);
@@ -80,11 +93,7 @@ export default function TemplateEditor({
         ? MOBILE_PREVIEW_DEFAULT_ZOOM
         : DESKTOP_PREVIEW_DEFAULT_ZOOM;
       setDefaultPreviewZoom(nextDefault);
-      setPreviewZoom((current) =>
-        current === MOBILE_PREVIEW_DEFAULT_ZOOM || current === DESKTOP_PREVIEW_DEFAULT_ZOOM
-          ? nextDefault
-          : current
-      );
+      setPreviewZoom(nextDefault);
     };
     mq.addEventListener('change', syncDefaultZoom);
     return () => mq.removeEventListener('change', syncDefaultZoom);
@@ -243,9 +252,11 @@ export default function TemplateEditor({
           bakedSvgRef.current = res.svg;
           bakeSigRef.current = sig;
           setBakedSvg(res.svg);
+          setError('');
         }
-      } catch {
-        /* keep last baked file */
+      } catch (err) {
+        if (bakeReqIdRef.current !== reqId) return;
+        setError(err?.message || 'שגיאה בהכנת התצוגה.');
       }
     }, delay);
 
@@ -264,7 +275,10 @@ export default function TemplateEditor({
           f.fontSizePx ?? 16
         )
     );
-    return textDirty || scaleDirty;
+    const symbolsDirty =
+      JSON.stringify(readCornerSymbolsFromFontScales(fontScales)) !==
+      JSON.stringify(readCornerSymbolsFromFontScales(savedFontScales));
+    return textDirty || scaleDirty || symbolsDirty;
   }, [fields, values, savedValues, fontScales, savedFontScales]);
 
   const handleChange = (key, val) => {
@@ -305,6 +319,12 @@ export default function TemplateEditor({
       ...cur,
       letterSpacingEm: adjustLetterSpacing(cur.letterSpacingEm, -LETTER_SPACING_STEP_EM),
     }));
+  };
+
+  const handleCornerSymbolPatch = (corner, patch) => {
+    setFontScales((s) => withCornerSymbolPatch(s, corner, patch));
+    setSaveAcknowledged(false);
+    setOrderCompleted(false);
   };
 
   const handleReset = () => {
@@ -373,6 +393,15 @@ export default function TemplateEditor({
         setSaveAcknowledged(true);
       }
 
+      // Empty fields should export the template defaults (same as on-screen placeholders).
+      exportValues = { ...defaults, ...exportValues };
+      for (const f of fields) {
+        const v = exportValues[f.key];
+        if (v == null || String(v).trim() === '') {
+          exportValues[f.key] = defaults[f.key] || f.defaultText || '';
+        }
+      }
+
       // Keep on-screen bake in sync for print; DXF email uses values so the server
       // can strip orientation labels/rings before bake (preparedSvg already has them as glyphs).
       try {
@@ -390,12 +419,14 @@ export default function TemplateEditor({
       setOrderCompleted(true);
 
       if (emailRes.warnings && emailRes.warnings.length) {
-        window.alert(emailRes.warnings.join('\n'));
+        const unique = [...new Set(emailRes.warnings.filter(Boolean))];
+        window.alert(unique.join('\n'));
       }
 
       onOrderComplete?.(
-        emailRes.deletedItemId ?? itemId,
-        emailRes.remainingItems
+        emailRes.completedItemId ?? emailRes.deletedItemId ?? itemId,
+        emailRes.items || emailRes.remainingItems,
+        { isResend: orderSent }
       );
     } catch (err) {
       setError(err.message);
@@ -441,10 +472,11 @@ export default function TemplateEditor({
   const previewFontScales = bakedSvg ? {} : fontScales;
 
   return (
-    <div className="verse-page">
+    <div className={`verse-page${orderSent ? ' verse-page--sent' : ''}`}>
+      {orderSent ? <OrderSentMarker variant="sticky" /> : null}
       <img
         className="verse-print-logo"
-        src="/img-judaica-logo.png?v=3"
+        src="/img-judaica-logo-with-bg.png?v=5"
         alt="IMG JUDAICA LTD — אי אמ ג'י יודאיקה בע״מ"
       />
       <div className="editor verse-page-body">
@@ -474,11 +506,13 @@ export default function TemplateEditor({
             onSetFontSize={handleSetFontSize}
             onWidenSpacing={handleWidenSpacing}
             onTightenSpacing={handleTightenSpacing}
+            onCornerSymbolPatch={handleCornerSymbolPatch}
           />
 
           {error && <div className="notice error inline">{error}</div>}
         </section>
 
+        {/* Preview always mounts (including after order sent) — marker hugs SVG top edge. */}
         <section className="preview-pane verse-preview-pane" aria-label="תצוגת SVG">
           <div className="preview-head">
             <h3 className="panel-title">תצוגה</h3>
@@ -517,8 +551,11 @@ export default function TemplateEditor({
               previewZoom > PREVIEW_SCROLL_ZOOM_THRESHOLD
                 ? ' preview-viewport--scroll'
                 : ' preview-viewport--fit'
-            }`}
+            }${orderSent ? ' preview-viewport--sent' : ''}`}
           >
+            {orderSent ? (
+              <OrderSentMarker variant="diagonal" className="order-sent-marker--verses" />
+            ) : null}
             {previewSvg ? (
               <LiveSvgCanvas
                 ref={canvasRef}
@@ -592,9 +629,9 @@ export default function TemplateEditor({
         <div className="vp-footer-export">
           <button
             type="button"
-            className={`btn accent${orderCompleted && !isDirty ? ' btn-saved' : ''}`}
+            className={`btn accent${orderCompleted && !isDirty && !orderSent ? ' btn-saved' : ''}`}
             onClick={handleFinishOrder}
-            disabled={saving || exportingDxf || (orderCompleted && !isDirty)}
+            disabled={saving || exportingDxf}
           >
             {exportingDxf ? 'מסיים…' : 'סיום הזמנה'}
           </button>

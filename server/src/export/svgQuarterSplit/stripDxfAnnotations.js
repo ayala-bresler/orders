@@ -62,6 +62,8 @@ function isStrokeNone(stroke) {
 
 function hrefTargetId(node) {
   const h =
+    (typeof node.getAttributeNS === 'function' &&
+      node.getAttributeNS('http://www.w3.org/1999/xlink', 'href')) ||
     node.getAttribute('xlink:href') ||
     node.getAttribute('href') ||
     '';
@@ -108,6 +110,8 @@ function plainTextContent(node) {
 function isGuidePath(node, textPathTargetIds) {
   const id = node.getAttribute('id');
   if (!id) return false;
+  // Always keep Illustrator-style textPath guides (size templates).
+  if (/^SVGID/i.test(id)) return true;
   if (textPathTargetIds.has(id)) return true;
   return TEMPLATE.textPathHrefs.has(`#${id}`);
 }

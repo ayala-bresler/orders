@@ -191,17 +191,25 @@ function smtpTimeoutError(err) {
   return e;
 }
 
-function buildEmailText(meta = {}) {
-  const lines = [];
-  if (meta.modelName) lines.push(`דגם: ${meta.modelName}`);
-  if (meta.accessoryLine) lines.push(meta.accessoryLine);
-  if (meta.orderId != null) lines.push(`הזמנה: ${meta.orderId}`);
-  if (meta.customerName) lines.push(`לקוח: ${meta.customerName}`);
-  return lines.join('\n');
+/** Body text omitted — attachments alone are enough. */
+function buildEmailText(_meta = {}) {
+  return '';
 }
 
 function buildEmailSubject(meta = {}) {
+  const name = String(meta.customerName || '').trim();
+  const phone = String(meta.customerPhone || '').trim();
+  const who = [name, phone].filter(Boolean).join(' ').trim();
+
+  // Admin / store: subject is the customer identity; resends are marked explicitly.
+  if (who) {
+    if (meta.isResend) return `הזמנה חוזרת מ- ${who}`;
+    return who;
+  }
+
   const parts = [];
+  if (meta.isResend) parts.push('הזמנה חוזרת');
+  if (meta.kind === 'verses-print') parts.push('דף פסוקים');
   if (meta.orderId != null) parts.push(`הזמנה ${meta.orderId}`);
   if (meta.modelName) parts.push(meta.modelName);
   return parts.length ? parts.join(' · ') : 'ייצוא הזמנה';

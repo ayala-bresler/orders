@@ -62,9 +62,19 @@ const LiveSvgCanvas = forwardRef(function LiveSvgCanvas(
     if (!fitByHeight || !wrapperRef.current) return undefined;
 
     const wrapper = wrapperRef.current;
+    const pane = wrapper.closest('.preview-pane, .verse-preview-pane');
+    const viewport = wrapper.closest('.preview-viewport');
 
+    let scrollRaf = 0;
     const refit = () => {
       if (svgRef.current) fitSvgToContainerHeight(svgRef.current, wrapper, zoom);
+    };
+    const refitOnScroll = () => {
+      if (scrollRaf) return;
+      scrollRaf = window.requestAnimationFrame(() => {
+        scrollRaf = 0;
+        refit();
+      });
     };
 
     const handleBeforePrint = () => {
@@ -76,18 +86,31 @@ const LiveSvgCanvas = forwardRef(function LiveSvgCanvas(
     };
 
     refit();
-    const pane = wrapper.closest('.preview-pane, .verse-preview-pane');
+    // Second pass after layout settles (flex/footer positions).
+    const raf = window.requestAnimationFrame(refit);
+
     const observer = new ResizeObserver(refit);
     if (pane) observer.observe(pane);
+    if (viewport) observer.observe(viewport);
+    observer.observe(wrapper);
     window.addEventListener('resize', refit);
+    // Mobile: preview often sits below the fold; re-fit when it scrolls into view.
+    window.addEventListener('scroll', refitOnScroll, { passive: true, capture: true });
     window.addEventListener('beforeprint', handleBeforePrint);
     window.addEventListener('afterprint', handleAfterPrint);
+    window.visualViewport?.addEventListener('resize', refit);
+    window.visualViewport?.addEventListener('scroll', refitOnScroll);
 
     return () => {
+      window.cancelAnimationFrame(raf);
+      if (scrollRaf) window.cancelAnimationFrame(scrollRaf);
       observer.disconnect();
       window.removeEventListener('resize', refit);
+      window.removeEventListener('scroll', refitOnScroll, true);
       window.removeEventListener('beforeprint', handleBeforePrint);
       window.removeEventListener('afterprint', handleAfterPrint);
+      window.visualViewport?.removeEventListener('resize', refit);
+      window.visualViewport?.removeEventListener('scroll', refitOnScroll);
     };
   }, [fitByHeight, masterSvg, zoom]);
 

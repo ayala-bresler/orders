@@ -45,9 +45,15 @@ async function createDraftOrder(customerId) {
 const VERSE_TYPE_NAME = process.env.VERSE_TYPE_NAME || 'עץ חיים';
 
 async function getOrderItems(orderId) {
-  const { rows } = await query(
-    `SELECT oi.item_id AS order_item_id, oi.product_code, oi.quantity,
+  const {
+    ensureOrderItemStatusColumn,
+    isMissingStatusColumnError,
+  } = require('../utils/ensureOrderItemStatus');
+
+  const sql = `
+    SELECT oi.item_id AS order_item_id, oi.product_code, oi.quantity,
             oi.model AS model_code,
+            COALESCE(oi.status, 'open') AS status,
             p.product_name, oi.customized_svg_path,
             m.model_name,
             oi.has_crown, oi.crown_model,
@@ -68,10 +74,20 @@ async function getOrderItems(orderId) {
        LEFT JOIN models bm ON bm.model_code = oi.breastplate_model
        LEFT JOIN models pm ON pm.model_code = oi.pointer_model
       WHERE oi.order_id = $1
-      ORDER BY oi.item_id`,
-    [orderId, VERSE_TYPE_NAME]
-  );
-  return rows;
+      ORDER BY
+        CASE WHEN COALESCE(oi.status, 'open') = 'completed' THEN 1 ELSE 0 END,
+        oi.item_id`;
+
+  try {
+    const { rows } = await query(sql, [orderId, VERSE_TYPE_NAME]);
+    return rows;
+  } catch (err) {
+    if (!isMissingStatusColumnError(err)) throw err;
+    console.warn('[db] order_items.status missing — applying column, then retry');
+    await ensureOrderItemStatusColumn();
+    const { rows } = await query(sql, [orderId, VERSE_TYPE_NAME]);
+    return rows;
+  }
 }
 
 async function attachOrderContext(customer) {
@@ -89,8 +105,8 @@ async function attachOrderContext(customer) {
 async function identify(input) {
   const phone = normalizePhone(input && input.phone);
 
-  if (phone.length < 7) {
-    const e = new Error('נא להזין מספר טלפון תקין.');
+  if (phone.length < 4) {
+    const e = new Error('נא להזין מספר טלפון תקין (לפחות 4 ספרות).');
     e.status = 400;
     throw e;
   }
@@ -129,8 +145,8 @@ async function confirmNewCustomer(input) {
   const phone = normalizePhone(input && input.phone);
   const fullName = normalizeName(input && input.full_name);
 
-  if (phone.length < 7) {
-    const e = new Error('נא להזין מספר טלפון תקין.');
+  if (phone.length < 4) {
+    const e = new Error('נא להזין מספר טלפון תקין (לפחות 4 ספרות).');
     e.status = 400;
     throw e;
   }

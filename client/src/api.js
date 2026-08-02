@@ -33,7 +33,15 @@ function buildDxfRequestBody(valuesOrPayload, fontScales) {
 }
 
 async function toJson(res) {
-  const data = await res.json().catch(() => ({}));
+  const rawText = await res.text().catch(() => '');
+  let data = {};
+  if (rawText) {
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      data = { error: rawText.slice(0, 300) };
+    }
+  }
   if (res.status === 401) {
     clearSessionAuth();
     closeAllLiveConnections();
@@ -49,9 +57,14 @@ async function toJson(res) {
     const detail =
       data.error ||
       data.message ||
-      (typeof data === 'string' ? data : null) ||
+      (typeof data === 'string' && data) ||
+      (data && typeof data === 'object' && Object.keys(data).length
+        ? JSON.stringify(data).slice(0, 300)
+        : null) ||
       `Request failed (${res.status})`;
-    throw new Error(detail);
+    const err = new Error(detail);
+    err.status = res.status;
+    throw err;
   }
   return data;
 }

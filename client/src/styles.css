@@ -79,6 +79,7 @@ body {
 
 /* --- verse editor: desktop side-by-side, mobile stacked --- */
 .verse-page {
+  position: relative;
   display: flex;
   flex-direction: column;
 }
@@ -301,6 +302,7 @@ body {
     flex: none;
     min-height: auto;
     overflow: visible;
+    gap: 12px;
   }
 
   .verse-page .editor {
@@ -308,28 +310,51 @@ body {
     min-height: auto;
   }
 
+  /*
+   * Mobile: one continuous page scroll —
+   * all verse fields first, then keep scrolling to reach the preview file.
+   * Preview keeps its own height + internal scroll for zoom.
+   */
   .verse-form-pane,
   .verse-page .form-pane {
     order: 1;
-    overflow: visible;
+    position: relative;
+    z-index: auto;
     flex: 0 0 auto;
-    min-height: auto;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+    background: var(--panel);
   }
 
   .dynamic-svg-form-wrapper {
     flex: 0 0 auto;
-    min-height: auto;
+    min-height: 0;
+    display: block;
+    overflow: visible;
   }
 
   .verse-form-scroll {
-    overflow-x: hidden;
-    overflow-y: auto;
-    flex: 0 0 auto;
+    flex: none;
     min-height: 0;
-    max-height: min(52vh, 480px);
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
+    max-height: none;
+    height: auto;
+    overflow: visible;
     padding-inline-end: 2px;
+    padding-top: 10px;
+    padding-bottom: 20px;
+  }
+
+  .verse-form-scroll .field-group:first-child {
+    scroll-margin-top: 6px;
+  }
+
+  .verse-form-pane > .product-meta {
+    flex-shrink: 0;
   }
 
   .verse-page .verse-form,
@@ -412,15 +437,54 @@ body {
     min-height: 2.9rem;
   }
 
-  .verse-preview-pane {
+  /* Preview hugs content: title + zoom tools + SVG only (no empty bands). */
+  .verse-preview-pane,
+  .verse-page .preview-pane.verse-preview-pane {
     order: 2;
-    min-height: 300px;
+    flex: 0 0 auto;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+    margin-top: 8px;
+    margin-bottom: 0;
+    padding: 6px 6px 4px;
+    scroll-margin-top: calc(var(--app-top-mobile-h, 96px) + 8px);
+  }
+
+  .verse-page .preview-head,
+  .verse-preview-pane .preview-head {
+    margin-bottom: 2px;
+    min-height: 0;
   }
 
   .verse-page .preview-viewport {
-    max-height: 55vh;
-    min-height: 260px;
+    flex: 0 0 auto;
+    min-height: 0;
+    height: auto;
+    max-height: none;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+    align-items: center;
+    justify-content: center;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: auto;
+  }
+
+  .verse-page .preview-viewport--fit {
+    overflow: hidden;
+  }
+
+  .verse-page .preview-viewport--scroll {
     overflow: auto;
+  }
+
+  .verse-page .svg-canvas--height-fit {
+    margin: 0 auto;
   }
 
   /* Pin editor actions to the bottom of the viewport (not lost in scroll). */
@@ -437,17 +501,15 @@ body {
     box-shadow: 0 -2px 10px rgba(36, 31, 31, 0.08);
   }
 
-  .verse-page .svg-canvas,
-  .verse-page .svg-canvas-inner {
+  /* Height-fit mode: JS sets explicit px sizes — don't force 100%/auto. */
+  .verse-page .svg-canvas--height-fit,
+  .verse-page .svg-canvas--height-fit .svg-canvas-inner {
     width: max-content;
     height: max-content;
-    max-width: none;
+    max-width: 100%;
   }
 
-  .verse-page .svg-canvas svg,
-  .verse-page .svg-canvas-inner svg {
-    width: 100%;
-    height: auto;
+  .verse-page .svg-canvas--height-fit svg {
     max-height: none;
   }
 }
@@ -781,7 +843,18 @@ body {
 .verse-page .preview-pane,
 .verse-preview-pane {
   position: static;
-  min-height: 0;
+}
+
+/* Desktop only — on mobile these would collapse the stacked preview to a speck. */
+@media (min-width: 900px) {
+  .verse-page .preview-pane,
+  .verse-preview-pane {
+    min-height: 0;
+  }
+
+  .verse-page .preview-viewport {
+    min-height: 0;
+  }
 }
 
 .verse-page .preview-head,
@@ -805,17 +878,18 @@ body {
 
 .verse-page .preview-viewport {
   flex: 1;
-  min-height: 0;
   max-height: none;
   display: flex;
   padding: 4px;
   -webkit-overflow-scrolling: touch;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .verse-page .preview-viewport--fit {
   overflow: hidden;
-  align-items: safe center;
-  justify-content: safe center;
+  align-items: center;
+  justify-content: center;
 }
 
 .verse-page .preview-viewport--scroll {
@@ -831,8 +905,8 @@ body {
   height: max-content;
   min-width: 0;
   min-height: 0;
-  max-width: none;
-  max-height: none;
+  max-width: 100%;
+  max-height: 100%;
 }
 
 .verse-page .svg-canvas--height-fit .svg-canvas-inner {
@@ -913,6 +987,158 @@ body {
   color: var(--accent);
   text-align: center;
   width: 100%;
+}
+
+.field-group legend.field-group-legend-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 10px;
+  width: auto;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.field-group-legend-label {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.corner-symbols-controls {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.corner-symbols-type-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.corner-symbol-type-btn {
+  box-sizing: border-box;
+  width: 1.45rem;
+  height: 1.45rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--bg, #fff);
+  color: var(--ink);
+  cursor: pointer;
+  line-height: 0;
+}
+
+.corner-symbol-type-btn:hover {
+  border-color: var(--accent);
+  background: rgba(138, 109, 59, 0.06);
+}
+
+.corner-symbol-type-btn.is-selected {
+  border-color: var(--accent);
+  background: rgba(138, 109, 59, 0.14);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.corner-symbol-icon {
+  width: 0.82rem;
+  height: 0.82rem;
+  display: block;
+}
+
+.corner-symbol-icon path {
+  fill: currentColor;
+}
+
+.corner-symbols-side-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.corner-symbols-side-btn {
+  box-sizing: border-box;
+  min-width: 1.35rem;
+  height: 1.45rem;
+  padding: 0 3px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--bg, #fff);
+  color: var(--muted, #666);
+  font-size: 10px;
+  font-weight: 700;
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+  direction: ltr;
+}
+
+.corner-symbols-side-btn:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.corner-symbols-side-btn.is-selected {
+  border-color: var(--accent);
+  background: rgba(138, 109, 59, 0.14);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.corner-symbols-counter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--bg, #fff);
+  direction: ltr;
+}
+
+.corner-symbols-step {
+  box-sizing: border-box;
+  width: 1.35rem;
+  height: 1.45rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.corner-symbols-step:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.corner-symbols-step:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.corner-symbols-count-value {
+  box-sizing: border-box;
+  min-width: 1.25rem;
+  height: 1.45rem;
+  padding: 0 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-inline: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
 }
 
 .verse-field-sublabel {
@@ -1237,6 +1463,8 @@ body {
 
 .verse-print-logo {
   display: none;
+  background: transparent;
+  mix-blend-mode: multiply;
 }
 
 @media (max-height: 780px) and (min-width: 900px) {
@@ -1579,6 +1807,24 @@ body {
   flex-shrink: 0;
 }
 
+/* Mobile: pin header to the top of the viewport (spacer in App.jsx). */
+@media (max-width: 899px) {
+  .app-top--mobile {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 60;
+    background: var(--bg);
+    box-shadow: 0 1px 0 var(--line);
+  }
+
+  .app-top-mobile-spacer {
+    flex-shrink: 0;
+    width: 100%;
+  }
+}
+
 .site-header {
   display: flex;
   align-items: center;
@@ -1611,7 +1857,9 @@ body {
   max-width: 130px;
   object-fit: contain;
   flex-shrink: 0;
-  background: none;
+  background: transparent;
+  /* Drop the baked-in white rectangle on light UI backgrounds. */
+  mix-blend-mode: multiply;
 }
 
 .site-header--center .site-logo {
@@ -1651,7 +1899,8 @@ body {
   width: min(220px, 55vw);
   max-height: 180px;
   object-fit: contain;
-  background: none;
+  background: transparent;
+  mix-blend-mode: multiply;
 }
 
 @media (max-width: 899px) {
@@ -1845,6 +2094,24 @@ body {
   margin-top: 12px;
   justify-content: flex-start;
   flex-wrap: nowrap;
+}
+
+.order-resend-notice {
+  z-index: 220;
+}
+
+.order-resend-notice-dialog {
+  width: min(100%, 380px);
+  padding: 22px 24px;
+  text-align: center;
+}
+
+.order-resend-notice-dialog .confirm-dialog-message {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.45;
+  color: var(--ink);
 }
 
 .step:not(:disabled):hover {
@@ -2346,6 +2613,7 @@ html:has(.main-resume) body {
 .card h2 { margin: 0 0 6px; font-size: 18px; }
 
 .details-step {
+  position: relative;
   max-width: none;
   width: 100%;
   margin: 0;
@@ -2358,6 +2626,7 @@ html:has(.main-resume) body {
   border: none;
   background: var(--surface-muted);
   box-shadow: none;
+  overflow: hidden;
 }
 
 .card.details-step {
@@ -3690,6 +3959,24 @@ html:has(.main-model-picker) body {
   color: var(--ink);
 }
 
+.model-picker-name-btn--sent {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, #fff);
+  gap: 6px;
+}
+
+.model-picker-sent-tag {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: #b71c1c;
+  border-radius: 999px;
+  padding: 2px 7px;
+  line-height: 1.2;
+}
+
 .order-item-summary {
   display: flex;
   flex-direction: column;
@@ -3923,6 +4210,15 @@ html:has(.main-model-picker) body {
   overflow: hidden;
 }
 
+.resume-card--completed {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  box-shadow: 0 2px 14px rgba(138, 109, 59, 0.18);
+}
+
+.resume-card--completed .resume-card-enter--static {
+  cursor: pointer;
+}
+
 .resume-card-enter {
   display: flex;
   flex-direction: column;
@@ -4024,6 +4320,139 @@ html:has(.main-model-picker) body {
   height: 20px;
 }
 
+/* --- “ההזמנה נשלחה” markers (overlay only — do not alter page layout) --- */
+.order-sent-marker {
+  pointer-events: none;
+  z-index: 6;
+}
+
+.order-sent-marker-text {
+  display: block;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  line-height: 1.1;
+}
+
+/* Resume / model card — lower so the full label stays inside the card */
+.order-sent-marker--card {
+  position: absolute;
+  top: 28px;
+  left: 10px;
+  right: auto;
+  bottom: auto;
+  max-width: calc(100% - 24px);
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: #b71c1c;
+  color: #fff;
+  box-shadow: 0 3px 10px rgba(183, 28, 28, 0.45);
+  transform: rotate(-26deg);
+  transform-origin: left top;
+  z-index: 3;
+}
+
+.order-sent-marker--card .order-sent-marker-text {
+  font-size: clamp(10px, 3.2cqi, 12px);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+
+/* Desktop diagonal ribbon — top-left of page (details / verses) */
+.order-sent-marker--diagonal {
+  position: absolute;
+  top: 58px;
+  left: -20px;
+  padding: 10px 48px;
+  background: linear-gradient(90deg, #c62828, #8e0000);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(140, 0, 0, 0.35);
+  transform: rotate(-32deg);
+  transform-origin: center center;
+}
+
+.order-sent-marker--diagonal .order-sent-marker-text {
+  font-size: clamp(15px, 1.7vw, 22px);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+/* Details: under the brown title banner */
+.order-sent-marker--details {
+  top: 58px;
+  left: -20px;
+}
+
+/* Verses: on the SVG preview — red corner kisses the top edge of the file */
+.verse-page .preview-viewport {
+  position: relative;
+}
+
+.verse-page .preview-viewport--sent {
+  overflow: visible;
+}
+
+/* Midpoint between previous (~113px) and kissing the top (0). */
+.order-sent-marker--verses {
+  top: 56px;
+  left: -10px;
+  z-index: 7;
+  transform: rotate(-32deg);
+  transform-origin: left top;
+  padding: 8px 40px;
+}
+
+/* Mobile sticky strip above bottom nav — translucent overlay only */
+.order-sent-marker--sticky {
+  display: none;
+}
+
+@media (max-width: 899px) {
+  .order-sent-marker--diagonal {
+    display: none;
+  }
+
+  .order-sent-marker--sticky {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    z-index: 45;
+    margin: 0;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: rgba(183, 28, 28, 0.45);
+    color: #fff;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+    transform: none;
+    pointer-events: none;
+  }
+
+  .order-sent-marker--sticky .order-sent-marker-text {
+    font-size: clamp(16px, 5vw, 22px);
+    letter-spacing: 0.05em;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Extra scroll length only — layout of form/preview unchanged */
+  .details-step--sent .details-sheet-scroll {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .verse-page--sent {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (min-width: 900px) {
+  .order-sent-marker--sticky {
+    display: none !important;
+  }
+}
+
 .resume-add-wrap {
   display: flex;
   justify-content: center;
@@ -4068,11 +4497,11 @@ html:has(.main-model-picker) body {
 }
 .editing-tag { font-size: 13px; color: var(--muted); }
 
-/* --- print: logo + SVG, slight margins for proportional layout --- */
+/* --- print: one A4 portrait page — logo + plate, no top gap, no spill --- */
 @media print {
   @page {
-    size: auto;
-    margin: 5mm;
+    size: A4 portrait;
+    margin: 4mm;
   }
 
   html:has(.main-editor),
@@ -4084,7 +4513,7 @@ html:has(.main-model-picker) body {
   .editor {
     height: auto !important;
     max-height: none !important;
-    overflow: visible !important;
+    overflow: hidden !important;
     margin: 0 !important;
     padding: 0 !important;
   }
@@ -4098,18 +4527,32 @@ html:has(.main-model-picker) body {
   .app-header, .app-top, .site-header, .steps, .flash, .session-bar,
   .vp-header, .vp-footer, .form-pane, .editor-toolbar,
   .panel-title, .preview-zoom, .preview-head,
-  .verse-form-pane, .product-meta, .verse-order-meta {
+  .verse-form-pane, .product-meta, .verse-order-meta,
+  .order-sent-marker {
     display: none !important;
+  }
+
+  .verse-page {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    width: 100% !important;
+    max-height: 289mm !important; /* A4 height − page margins */
+    overflow: hidden !important;
   }
 
   .verse-print-logo {
     display: block !important;
-    height: 48px !important;
+    height: 28px !important;
     width: auto !important;
-    max-width: 160px !important;
+    max-width: 120px !important;
     object-fit: contain !important;
-    margin: 0 auto 8mm 0 !important;
-    background: #fff !important;
+    margin: 0 auto 2mm auto !important;
+    padding: 0 !important;
+    background: transparent !important;
+    mix-blend-mode: multiply !important;
+    flex: 0 0 auto !important;
   }
 
   .editor {
@@ -4117,6 +4560,9 @@ html:has(.main-model-picker) body {
     padding: 0 !important;
     margin: 0 !important;
     height: auto !important;
+    width: 100% !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
   }
 
   .preview-pane,
@@ -4129,14 +4575,12 @@ html:has(.main-model-picker) body {
     height: auto !important;
     min-height: 0 !important;
     display: block !important;
-    overflow: visible !important;
+    overflow: hidden !important;
   }
 
   .preview-viewport {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    overflow: visible !important;
+    display: block !important;
+    overflow: hidden !important;
     max-height: none !important;
     padding: 0 !important;
     margin: 0 !important;
@@ -4152,7 +4596,7 @@ html:has(.main-model-picker) body {
     width: 100% !important;
     height: auto !important;
     max-height: none !important;
-    overflow: visible !important;
+    overflow: hidden !important;
     transform: none !important;
     flex: none !important;
     padding: 0 !important;
@@ -4162,12 +4606,14 @@ html:has(.main-model-picker) body {
   .svg-canvas svg,
   .svg-canvas-inner svg {
     display: block !important;
-    width: 100% !important;
+    width: auto !important;
     height: auto !important;
     max-width: 100% !important;
-    max-height: none !important;
+    /* Leave room for logo (~10mm) inside printable area */
+    max-height: 270mm !important;
     margin: 0 auto !important;
     padding: 0 !important;
-    page-break-inside: avoid;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 }

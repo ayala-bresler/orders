@@ -1,8 +1,12 @@
 /** Preview-only crop padding (px in SVG user units) around registration squares. */
 export const PREVIEW_CROP_PADDING_PX = 3;
 
+/** Ignore tiny leftover rects (not the corner registration squares). */
+const MIN_REGISTRATION_RECT_PX = 4;
+
 /**
- * Bounding box of all <rect> registration markers in order.svg.
+ * Bounding box of registration-marker <rect>s in the template.
+ * Skips zero/tiny rects so a baked SVG cannot crop the preview to a speck.
  * @returns {{ minX: number, minY: number, maxX: number, maxY: number } | null}
  */
 export function registrationMarkerBounds(svgRoot) {
@@ -13,6 +17,7 @@ export function registrationMarkerBounds(svgRoot) {
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
+  let used = 0;
 
   for (const rect of rects) {
     const x = Number.parseFloat(rect.getAttribute('x'));
@@ -20,13 +25,17 @@ export function registrationMarkerBounds(svgRoot) {
     const w = Number.parseFloat(rect.getAttribute('width') || '0');
     const h = Number.parseFloat(rect.getAttribute('height') || '0');
     if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    if (!(w >= MIN_REGISTRATION_RECT_PX) || !(h >= MIN_REGISTRATION_RECT_PX)) continue;
+    used += 1;
     minX = Math.min(minX, x);
     minY = Math.min(minY, y);
     maxX = Math.max(maxX, x + w);
     maxY = Math.max(maxY, y + h);
   }
 
-  if (!Number.isFinite(minX)) return null;
+  if (!used || !Number.isFinite(minX)) return null;
+  // Crop only when we have a real frame (at least two corners / a wide span).
+  if (maxX - minX < 40 || maxY - minY < 40) return null;
   return { minX, minY, maxX, maxY };
 }
 

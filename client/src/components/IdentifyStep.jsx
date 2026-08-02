@@ -18,6 +18,11 @@ export default function IdentifyStep({ onIdentified, isAdmin = false }) {
 
   const submit = async (e) => {
     e.preventDefault();
+    const digits = String(phone || '').replace(/\D/g, '');
+    if (digits.length < 4) {
+      setError('נא להזין מספר טלפון תקין (לפחות 4 ספרות).');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -83,7 +88,7 @@ export default function IdentifyStep({ onIdentified, isAdmin = false }) {
       <div className="identify-brand">
         <img
           className="identify-logo"
-          src="/img-judaica-logo.png?v=3"
+          src="/img-judaica-logo-with-bg.png?v=5"
           alt="IMG JUDAICA LTD — אי אמ ג'י יודאיקה בע״מ"
         />
       </div>
@@ -134,6 +139,7 @@ export default function IdentifyStep({ onIdentified, isAdmin = false }) {
                 onChange={(e) => setPhone(e.target.value)}
                 inputMode="tel"
                 placeholder="050-0000000"
+                minLength={4}
                 required
               />
             </label>

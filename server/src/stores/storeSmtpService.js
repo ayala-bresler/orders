@@ -1,8 +1,9 @@
 'use strict';
 
 /**
- * Send order PDF copy to the store mailbox via system SMTP (same as admin mail).
+ * Send order verses-print PDF to the store mailbox via system SMTP.
  * Stores only need store_email — no per-store HOST/PORT/password.
+ * Admin DXF mail is separate and does not use this path.
  */
 
 const { findStoreById } = require('./storeAuthService');

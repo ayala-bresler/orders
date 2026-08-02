@@ -77,9 +77,17 @@ function normalizeStyleEntry(raw, baseFontSizePx = BASE_FONT_SIZE_PX) {
 
 /** Compact map for DB/API — omit sizes that match the field’s file base. */
 function compactStylesMap(input, baseByKey = {}) {
+  const {
+    splitFontScalesPayload,
+    joinFontScalesPayload,
+    hasAnyCornerSymbols,
+  } = require('./cornerSymbols');
+  const { styles: styleInput, cornerSymbols } = splitFontScalesPayload(input);
   const out = {};
-  if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
-  for (const [key, raw] of Object.entries(input)) {
+  if (!styleInput || typeof styleInput !== 'object' || Array.isArray(styleInput)) {
+    return joinFontScalesPayload(out, cornerSymbols);
+  }
+  for (const [key, raw] of Object.entries(styleInput)) {
     const base = baseByKey[key] ?? BASE_FONT_SIZE_PX;
     const style = normalizeStyleEntry(raw, base);
     const entry = {};
@@ -89,7 +97,14 @@ function compactStylesMap(input, baseByKey = {}) {
     }
     if (Object.keys(entry).length) out[key] = entry;
   }
-  return out;
+  return joinFontScalesPayload(out, hasAnyCornerSymbols(cornerSymbols) ? cornerSymbols : {});
+}
+
+/** Reserved keys nested in fontScales payloads (not verse field styles). */
+const RESERVED_FONT_SCALE_KEYS = new Set(['__cornerSymbols', '__cornerStars']);
+
+function isReservedFontScaleKey(key) {
+  return RESERVED_FONT_SCALE_KEYS.has(key) || String(key || '').startsWith('__');
 }
 
 function validateStylesMap(input, fieldByKey) {
@@ -100,6 +115,11 @@ function validateStylesMap(input, fieldByKey) {
     return { styles, errors: ['fontScales must be an object.'] };
   }
   for (const [key, raw] of Object.entries(input)) {
+    // Pass through reserved meta keys; never treat them as verse field scales.
+    if (isReservedFontScaleKey(key)) {
+      if (key === '__cornerSymbols' && raw != null) styles[key] = raw;
+      continue;
+    }
     if (!fieldByKey[key]) {
       errors.push(`Unknown font scale key "${key}".`);
       continue;

@@ -123,7 +123,7 @@ export default function StoreAuthGate({ onAuthenticated, onAdminAuthenticated, i
       <div className="identify-brand">
         <img
           className="identify-logo"
-          src="/img-judaica-logo.png?v=3"
+          src="/img-judaica-logo-with-bg.png?v=5"
           alt="IMG JUDAICA LTD — אי אמ ג'י יודאיקה בע״מ"
         />
       </div>

@@ -3,12 +3,18 @@ import { fetchOrderItemDetails, fetchModels, fetchProductSizes, saveOrderItemDet
 import { plateDiameterNumber, findSizeByPlateDiameter, formatPlateDiameterLabel, syncItemSizeFields, resolveProductSizeRow, DEFAULT_PLATE_DIAMETER } from '../utils/productSizeDisplay.js';
 import { clampOrderNotes } from '../utils/orderNotes.js';
 import { resolveModelCode } from '../utils/modelSku.js';
+import {
+  isCrownOnlyModel,
+  productSelectableModels,
+  crownSelectableModels,
+} from '../utils/modelScopes.js';
 import EtzChaimMeasuresDiagram from './EtzChaimMeasuresDiagram.jsx';
 import ModelSelect from './ModelSelect.jsx';
 import NumberedNotesArea from './NumberedNotesArea.jsx';
 import DeliveryDateField from './DeliveryDateField.jsx';
 import { IconBack, IconContinue } from './Icons.jsx';
 import { prefetchVerseBake } from '../utils/verseBakePrefetch.js';
+import OrderSentMarker from './OrderSentMarker.jsx';
 
 function fieldValue(record, key) {
   const val = record?.[key];
@@ -27,11 +33,15 @@ function InlineField({ label, children, wide = false, compact = false, className
   );
 }
 
-function AccessoryRow({ label, modelKey, hasKey, item, models, mainModelCode, onAccessoryChange }) {
+function AccessoryRow({ label, modelKey, hasKey, item, models, modelOptions, mainModelCode, onAccessoryChange }) {
+  const options = modelOptions || models;
   const checked = item[hasKey] === true;
   const storedCode = resolveModelCode(fieldValue(item, modelKey), models);
   const mainCode = resolveModelCode(mainModelCode, models);
-  const selectValue = storedCode || mainCode || '';
+  // Crown-only codes must stay selected even when main product model is different.
+  const selectValue = storedCode
+    || (options.some((m) => m.model_code === mainCode) ? mainCode : '')
+    || '';
 
   const handleCheck = (e) => {
     onAccessoryChange({ hasKey, modelKey, checked: e.target.checked, mainModelCode: mainCode });
@@ -51,7 +61,7 @@ function AccessoryRow({ label, modelKey, hasKey, item, models, mainModelCode, on
       {checked ? (
         <ModelSelect
           className="details-accessory-model"
-          models={models}
+          models={options}
           value={selectValue}
           onChange={(code) => onAccessoryChange({ modelKey, modelCode: code })}
           ariaLabel={`${label} — דגם`}
@@ -66,6 +76,7 @@ function AccessoryRow({ label, modelKey, hasKey, item, models, mainModelCode, on
 const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
   orderId,
   itemId,
+  orderSent = false,
   onContinueToVerses,
   onFinishWithoutVerses,
   onSupportsVersesChange,
@@ -235,8 +246,18 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
     const synced = syncItemSizeFields(raw, productSizes);
     const out = { ...synced };
     if (out.model) out.model = resolveModelCode(out.model, models) || out.model;
+    // Crown-only models (09/10) must never be saved as the main product דגם.
+    if (out.model && isCrownOnlyModel(out.model)) {
+      out.model = null;
+    }
     for (const key of ['crown_model', 'breastplate_model', 'pointer_model']) {
       if (out[key]) out[key] = resolveModelCode(out[key], models) || out[key];
+    }
+    // טס / יד cannot keep a crown-only model code.
+    for (const key of ['breastplate_model', 'pointer_model']) {
+      if (out[key] && isCrownOnlyModel(out[key])) {
+        out[key] = null;
+      }
     }
     const main = out.model;
     if (out.has_crown && !out.crown_model && main) out.crown_model = main;
@@ -253,6 +274,9 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
       || JSON.stringify(curItem) !== JSON.stringify(baseItem)
     );
   }, [order, item, savedOrder, savedItem, models]);
+
+  const productModels = useMemo(() => productSelectableModels(models), [models]);
+  const crownModels = useMemo(() => crownSelectableModels(models), [models]);
 
   useEffect(() => {
     onDirtyChange?.(isDirty);
@@ -293,10 +317,12 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
       if (versesSupported) {
         onContinueToVerses?.(templateKeyForItem(nextItem));
       } else {
+        // Allow finishing again (resend path for items without verses).
         const completed = await completeOrderItem(orderId, itemId);
         onFinishWithoutVerses?.(
-          completed.deletedItemId ?? itemId,
-          completed.remainingItems
+          completed.completedItemId ?? completed.deletedItemId ?? itemId,
+          completed.items || completed.remainingItems,
+          { isResend: orderSent }
         );
       }
       return result;
@@ -331,7 +357,13 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
   const hasStones = item.has_stones === true;
 
   return (
-    <div className="card details-step">
+    <div className={`card details-step${orderSent ? ' details-step--sent' : ''}`}>
+      {orderSent ? (
+        <>
+          <OrderSentMarker variant="diagonal" className="order-sent-marker--details" />
+          <OrderSentMarker variant="sticky" />
+        </>
+      ) : null}
       <header className="details-page-banner" aria-label="כותרת">
         <h2 className="details-page-title">פרטי עץ חיים</h2>
       </header>
@@ -349,7 +381,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
                 <div className="details-row details-row-name">
                   <InlineField label="דגם:">
                     <ModelSelect
-                      models={models}
+                      models={productModels}
                       value={mainModelCode}
                       onChange={(code) => changeItem('model', code)}
                       ariaLabel="דגם"
@@ -420,6 +452,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
                   hasKey="has_crown"
                   item={item}
                   models={models}
+                  modelOptions={crownModels}
                   mainModelCode={mainModelCode}
                   onAccessoryChange={changeAccessory}
                 />
@@ -429,6 +462,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
                   hasKey="has_breastplate"
                   item={item}
                   models={models}
+                  modelOptions={productModels}
                   mainModelCode={mainModelCode}
                   onAccessoryChange={changeAccessory}
                 />
@@ -438,6 +472,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
                   hasKey="has_pointer"
                   item={item}
                   models={models}
+                  modelOptions={productModels}
                   mainModelCode={mainModelCode}
                   onAccessoryChange={changeAccessory}
                 />
@@ -541,8 +576,18 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
               <IconBack />
             </button>
           )}
-          <button type="submit" className="btn primary btn-with-icon details-nav-continue" disabled={saving}>
-            <span>{saving ? 'שומר…' : versesSupported ? 'שמירה והמשך' : 'סיום הזמנה'}</span>
+          <button
+            type="submit"
+            className="btn primary btn-with-icon details-nav-continue"
+            disabled={saving}
+          >
+            <span>
+              {saving
+                ? 'שומר…'
+                : versesSupported
+                  ? 'שמירה והמשך'
+                  : 'סיום הזמנה'}
+            </span>
             <IconContinue />
           </button>
         </nav>

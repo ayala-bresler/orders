@@ -9,11 +9,18 @@ const {
   transformPolylines,
   longestPolyline,
 } = require('./pathUtils');
-function hrefId(node) {
-  const h =
+function readHrefAttr(node) {
+  if (!node || typeof node.getAttribute !== 'function') return '';
+  const xlink =
+    (typeof node.getAttributeNS === 'function' &&
+      node.getAttributeNS('http://www.w3.org/1999/xlink', 'href')) ||
     node.getAttribute('xlink:href') ||
-    node.getAttribute('href') ||
     '';
+  return xlink || node.getAttribute('href') || '';
+}
+
+function hrefId(node) {
+  const h = readHrefAttr(node);
   return h.startsWith('#') ? h.slice(1) : h;
 }
 
@@ -76,7 +83,15 @@ function addShape(shapes, points, paint) {
 /** Polyline points for a guide path entry (object or legacy array). */
 function pathGuidePoints(guide) {
   if (!guide) return [];
-  return guide.points || guide;
+  if (Array.isArray(guide)) return guide;
+  return guide.points || [];
+}
+
+/** True when a textPath guide can be sampled (polyline points and/or bezier `d`). */
+function hasUsablePathGuide(guide) {
+  if (!guide) return false;
+  if (typeof guide.d === 'string' && guide.d.trim()) return true;
+  return pathGuidePoints(guide).length > 0;
 }
 
 function parseStyleLetterSpacingEm(style, fontSize) {
@@ -220,6 +235,8 @@ module.exports = {
   extractSvgContent,
   describeTextNode,
   pathGuidePoints,
+  hasUsablePathGuide,
+  readHrefAttr,
   mapPolyline,
   mapPoint,
 };

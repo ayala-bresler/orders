@@ -129,8 +129,15 @@ async function getOrderItemMeta(orderId, orderItemId) {
 function fontScalesFromRow(row) {
   const raw = row && row.verse_font_scales;
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const {
+    CORNER_SYMBOLS_KEY,
+    normalizeCornerSymbols,
+    joinFontScalesPayload,
+    hasAnyCornerSymbols,
+  } = require('../config/cornerSymbols');
   const out = {};
   for (const [key, val] of Object.entries(raw)) {
+    if (key === CORNER_SYMBOLS_KEY || key === '__cornerStars') continue;
     if (!FIELD_BY_KEY[key]) continue;
     const style = normalizeStyleEntry(val);
     const entry = {};
@@ -141,7 +148,8 @@ function fontScalesFromRow(row) {
     if (Math.abs(style.letterSpacingEm) > 0.0001) entry.letterSpacingEm = style.letterSpacingEm;
     if (Object.keys(entry).length) out[key] = entry;
   }
-  return out;
+  const cornerSymbols = normalizeCornerSymbols(raw[CORNER_SYMBOLS_KEY]);
+  return joinFontScalesPayload(out, hasAnyCornerSymbols(cornerSymbols) ? cornerSymbols : {});
 }
 
 /** Read the persisted verses for an order item as a { fieldKey: text } map. */
@@ -346,8 +354,8 @@ async function getOrderItemDetails(orderId, orderItemId) {
   const itemCols = itemSelectColumns();
   const { rows } = await query(
     `SELECT o.order_id, o.customer_id, o.total_amount, o.status, o.order_date${orderSelectFragment()},
-            c.address AS customer_address, c.full_name AS customer_name,
-            oi.${PK} AS order_item_id, oi.product_code, ${itemCols}
+            c.address AS customer_address, c.full_name AS customer_name, c.phone AS customer_phone,
+            oi.${PK} AS order_item_id, oi.product_code, oi.status AS item_status, ${itemCols}
        FROM orders o
        JOIN order_items oi ON oi.order_id = o.order_id
        LEFT JOIN customers c ON c.customer_id = o.customer_id
@@ -359,6 +367,7 @@ async function getOrderItemDetails(orderId, orderItemId) {
   const row = rows[0];
   const order = rowToOrderDetails(row);
   let item = rowToItemDetails(row);
+  item.status = row.item_status || 'open';
   item = await syncItemSizeFields(item, item.product_type_code || '01');
   const meta = await getOrderItemMeta(orderId, orderItemId);
   const supportsVerses = await itemSupportsVerses(item);
@@ -368,6 +377,7 @@ async function getOrderItemDetails(orderId, orderItemId) {
     item,
     meta,
     customerName: row.customer_name || null,
+    customerPhone: row.customer_phone || null,
     detailsComplete: isDetailsComplete(order, item),
     supportsVerses,
     fieldDefs: {
@@ -497,28 +507,83 @@ async function markOrderSubmitted(orderId) {
   );
 }
 
+const OPEN_STATUSES = ['draft', 'open'];
+
 /**
- * After a product is finished (DXF/PDF), remove only that line from the open order.
- * Other items stay. If none remain, mark the order submitted.
+ * After a product is finished (DXF/PDF), mark that line completed — do not delete it.
+ * The item stays on the order page (shown faded). Order stays open for more products.
  */
 async function completeOrderItem(orderId, orderItemId) {
-  const deleted = await deleteOrderItem(orderId, orderItemId);
-  const { getOrderItems } = require('./customerService');
-  const items = await getOrderItems(orderId);
-  let orderSubmitted = false;
-  if (!items.length) {
-    await markOrderSubmitted(orderId);
-    orderSubmitted = true;
+  const orderIdNum = Number(orderId);
+  const itemIdNum = Number(orderItemId);
+  if (!Number.isInteger(orderIdNum) || !Number.isInteger(itemIdNum)) {
+    const e = new Error('מזהה הזמנה או פריט שגוי.');
+    e.status = 400;
+    throw e;
   }
+
+  const {
+    ensureOrderItemStatusColumn,
+    isMissingStatusColumnError,
+  } = require('../utils/ensureOrderItemStatus');
+
+  const { rows: orderRows } = await query(
+    `SELECT order_id FROM orders WHERE order_id = $1 AND status = ANY($2)`,
+    [orderIdNum, OPEN_STATUSES]
+  );
+  if (!orderRows[0]) {
+    const e = new Error('ההזמנה לא נמצאה או שאינה ניתנת לעריכה.');
+    e.status = 404;
+    throw e;
+  }
+
+  let rows;
+  try {
+    ({ rows } = await query(
+      `UPDATE order_items
+          SET status = 'completed'
+        WHERE order_id = $1 AND ${PK} = $2
+        RETURNING ${PK} AS order_item_id, status`,
+      [orderIdNum, itemIdNum]
+    ));
+  } catch (err) {
+    if (!isMissingStatusColumnError(err)) throw err;
+    console.warn('[db] order_items.status missing on complete — applying column, then retry');
+    await ensureOrderItemStatusColumn();
+    ({ rows } = await query(
+      `UPDATE order_items
+          SET status = 'completed'
+        WHERE order_id = $1 AND ${PK} = $2
+        RETURNING ${PK} AS order_item_id, status`,
+      [orderIdNum, itemIdNum]
+    ));
+  }
+  if (!rows[0]) {
+    const e = new Error('הפריט לא נמצא בהזמנה.');
+    e.status = 404;
+    throw e;
+  }
+
+  // Ensure order stays editable for additional products.
+  await query(
+    `UPDATE orders SET status = 'open' WHERE order_id = $1 AND status = 'draft'`,
+    [orderIdNum]
+  );
+
+  const { getOrderItems } = require('./customerService');
+  const items = await getOrderItems(orderIdNum);
+  const openCount = items.filter((it) => it.status !== 'completed').length;
+
   return {
-    deletedItemId: deleted.deletedItemId,
+    completedItemId: itemIdNum,
+    /** @deprecated alias — item is kept, not deleted */
+    deletedItemId: itemIdNum,
     remainingItems: items,
-    remainingCount: items.length,
-    orderSubmitted,
+    items,
+    remainingCount: openCount,
+    orderSubmitted: false,
   };
 }
-
-const OPEN_STATUSES = ['draft', 'open'];
 
 function removeItemStorageFiles(orderId, orderItemId) {
   const dir = path.join(STORAGE_DIR, String(orderId));

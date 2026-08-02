@@ -11,6 +11,7 @@
 const { query } = require('../db');
 const { modelSkuPrefix } = require('../utils/modelSku');
 const { modelImageExists } = require('./modelImageService');
+const { isCrownOnlyModel } = require('../config/modelScopes');
 
 // The only category a client may order from.
 const CLIENT_CATEGORY_ID = Number(process.env.CLIENT_CATEGORY_ID || 4);
@@ -91,14 +92,18 @@ async function productSupportsVerses(productCode) {
   return rows[0];
 }
 
-/** All selectable models (דגם) for order details dropdowns. */
+/** All models for order-details dropdowns (includes crown_only flag). */
 async function listModels() {
   const { rows } = await query(
     `SELECT model_code, model_name
        FROM models
       ORDER BY model_name`
   );
-  return rows;
+  return rows.map((row) => ({
+    model_code: row.model_code,
+    model_name: row.model_name,
+    crown_only: isCrownOnlyModel(row.model_code),
+  }));
 }
 
 /**
@@ -129,19 +134,22 @@ async function listSelectableModels(categoryId = CLIENT_CATEGORY_ID) {
     [categoryId, VERSE_TYPE_NAME]
   );
 
-  return rows.map((row) => {
-    const short_sku = modelSkuPrefix(row.model_code);
-    return {
-      model_code: row.model_code,
-      model_name: row.model_name,
-      short_sku,
-      product_code: row.product_code || null,
-      sku: row.sku || null,
-      size_code: row.size_code || null,
-      supports_verses: Boolean(row.supports_verses),
-      has_image: modelImageExists(short_sku),
-    };
-  });
+  return rows
+    .filter((row) => !isCrownOnlyModel(row.model_code))
+    .map((row) => {
+      const short_sku = modelSkuPrefix(row.model_code);
+      return {
+        model_code: row.model_code,
+        model_name: row.model_name,
+        short_sku,
+        product_code: row.product_code || null,
+        sku: row.sku || null,
+        size_code: row.size_code || null,
+        supports_verses: Boolean(row.supports_verses),
+        has_image: modelImageExists(short_sku),
+        crown_only: false,
+      };
+    });
 }
 
 /**

@@ -138,11 +138,20 @@ export default function ProductPicker({
               <button
                 key={item.order_item_id}
                 type="button"
-                className="btn small model-picker-name-btn"
+                className={`btn small model-picker-name-btn${
+                  item.status === 'completed' ? ' model-picker-name-btn--sent' : ''
+                }`}
                 onClick={() => onOpenItem?.(item)}
-                title={mainModelName(item)}
+                title={
+                  item.status === 'completed'
+                    ? `${mainModelName(item)} — ההזמנה נשלחה`
+                    : mainModelName(item)
+                }
               >
                 {mainModelName(item)}
+                {item.status === 'completed' ? (
+                  <span className="model-picker-sent-tag">נשלחה</span>
+                ) : null}
               </button>
             ))}
           </div>

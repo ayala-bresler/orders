@@ -8,7 +8,12 @@
 const { DOMParser } = require('@xmldom/xmldom');
 const { accumulate } = require('./transform');
 const { TEMPLATE } = require('./templateRegistry');
-const { extractSvgContent, describeTextNode } = require('./svgExtract');
+const {
+  extractSvgContent,
+  describeTextNode,
+  hasUsablePathGuide,
+  readHrefAttr,
+} = require('./svgExtract');
 const { loadFont, layoutTextItemToPaths } = require('./svgText');
 
 function collectTextNodes(root, out = []) {
@@ -50,7 +55,7 @@ function replaceTextWithPaths(doc, textEl, pathDs) {
 }
 
 function readHref(node) {
-  return node?.getAttribute?.('xlink:href') || node?.getAttribute?.('href') || '';
+  return readHrefAttr(node);
 }
 
 /** Remove textPath guide paths (by live document hrefs + registry fallback). */
@@ -68,6 +73,27 @@ function removeGuidePaths(doc) {
     const el = doc.getElementById(id);
     if (el?.parentNode) el.parentNode.removeChild(el);
   }
+}
+
+function itemHasVisibleText(item) {
+  return Boolean(String(item?.text || '').trim());
+}
+
+function diagnoseBakeFailure(font, item, pathById) {
+  if (!itemHasVisibleText(item)) return null;
+  if (item.kind === 'plain') {
+    return 'טקסט ישר לא הומר למסלולים (אין גליפים בפונט).';
+  }
+  const rawId = item.pathId || '';
+  const pathId = rawId.startsWith('#') ? rawId.slice(1) : rawId;
+  if (!pathId) {
+    return 'טקסט מעוגל: חסר קישור לנתיב (xlink:href).';
+  }
+  const pathGuide = pathById[pathId];
+  if (!hasUsablePathGuide(pathGuide)) {
+    return `טקסט מעוגל: נתיב המדריך חסר (#${pathId}).`;
+  }
+  return `טקסט לא הומר למסלולים (#${pathId} — אין גליפים בפונט).`;
 }
 
 /**
@@ -91,6 +117,7 @@ function bakeTextToPaths(doc) {
   }
 
   const { pathById } = extractSvgContent(doc);
+  const seen = new Set();
 
   for (const textEl of textNodes) {
     const items = describeTextNode(textEl, matrixForNode(textEl));
@@ -99,7 +126,16 @@ function bakeTextToPaths(doc) {
       pathDs.push(...layoutTextItemToPaths(font, item, pathById));
     }
     if (!pathDs.length) {
-      warnings.push('טקסט לא הומר למסלולים (פונט או נתיב חסר).');
+      const meaningful = items.filter(itemHasVisibleText);
+      if (meaningful.length) {
+        for (const item of meaningful) {
+          const msg = diagnoseBakeFailure(font, item, pathById);
+          if (msg && !seen.has(msg)) {
+            seen.add(msg);
+            warnings.push(msg);
+          }
+        }
+      }
       if (textEl.parentNode) textEl.parentNode.removeChild(textEl);
       continue;
     }

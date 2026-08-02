@@ -116,10 +116,14 @@ export function clearSvgFitDimensions(svgRoot) {
   if (inner?.classList?.contains('svg-canvas-inner')) {
     inner.style.width = '';
     inner.style.height = '';
+    inner.style.maxWidth = '';
+    inner.style.maxHeight = '';
     const wrapper = inner.parentElement;
     if (wrapper?.classList?.contains('svg-canvas')) {
       wrapper.style.width = '';
       wrapper.style.height = '';
+      wrapper.style.maxWidth = '';
+      wrapper.style.maxHeight = '';
       delete wrapper.dataset.baseW;
       delete wrapper.dataset.baseH;
       delete wrapper.dataset.layoutSig;
@@ -130,16 +134,18 @@ export function clearSvgFitDimensions(svgRoot) {
 /** Zoom at or below this value: fit in viewport, no scrolling. Above: pan/scroll. */
 export const PREVIEW_SCROLL_ZOOM_THRESHOLD = 1;
 
-/** Mobile preview starts at true 100% (no extra enlarge). */
+/** Preview zoom starts at true 100% on all layouts. */
 export const MOBILE_PREVIEW_DEFAULT_ZOOM = 1;
 export const DESKTOP_PREVIEW_DEFAULT_ZOOM = 1;
 export const MOBILE_LAYOUT_MQ = '(max-width: 899px)';
 
+export function isMobileLayout() {
+  return typeof window !== 'undefined' && window.matchMedia(MOBILE_LAYOUT_MQ).matches;
+}
+
 export function getDefaultPreviewZoom() {
   if (typeof window === 'undefined') return DESKTOP_PREVIEW_DEFAULT_ZOOM;
-  return window.matchMedia(MOBILE_LAYOUT_MQ).matches
-    ? MOBILE_PREVIEW_DEFAULT_ZOOM
-    : DESKTOP_PREVIEW_DEFAULT_ZOOM;
+  return isMobileLayout() ? MOBILE_PREVIEW_DEFAULT_ZOOM : DESKTOP_PREVIEW_DEFAULT_ZOOM;
 }
 
 /** Parse viewBox "x y w h" → { w, h } or null. */
@@ -151,44 +157,94 @@ function parseViewBox(svgRoot) {
   return { w: nums[2], h: nums[3] };
 }
 
-/** Stable preview area from the pane — not affected by scrollbars inside the viewport. */
+function cssPaddingXY(style) {
+  return {
+    padX: (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0),
+    padY: (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0),
+  };
+}
+
+/**
+ * Available preview box in CSS pixels.
+ * Mobile: width-first (full content column) so the SVG can hug width and
+ * the pane can shrink-wrap height (no empty top/bottom bands).
+ */
 function measurePreviewArea(wrapperEl) {
   const viewport = wrapperEl.closest('.preview-viewport');
   const pane = wrapperEl.closest('.preview-pane, .verse-preview-pane');
-  const measureRoot = pane || viewport || wrapperEl;
+  const mobile = isMobileLayout();
 
-  const rootStyle = window.getComputedStyle(measureRoot);
-  const rootPadX =
-    (parseFloat(rootStyle.paddingLeft) || 0) + (parseFloat(rootStyle.paddingRight) || 0);
-  const rootPadY =
-    (parseFloat(rootStyle.paddingTop) || 0) + (parseFloat(rootStyle.paddingBottom) || 0);
+  const boxEl = viewport || pane || wrapperEl;
+  const boxStyle = window.getComputedStyle(boxEl);
+  const { padX, padY } = cssPaddingXY(boxStyle);
+  const rect = boxEl.getBoundingClientRect();
 
-  let availW = measureRoot.clientWidth - rootPadX;
-  let availH = measureRoot.clientHeight - rootPadY;
+  const cssPx = (value) => {
+    const n = parseFloat(value);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
 
-  if (pane) {
+  const FALLBACK_W = Math.min(Math.round(window.innerWidth - (mobile ? 16 : 32)), 480);
+  const widthEl = (mobile && pane) ? pane : boxEl;
+  const widthStyle = mobile && pane ? window.getComputedStyle(pane) : boxStyle;
+  const widthPadX = mobile && pane ? cssPaddingXY(widthStyle).padX : padX;
+  const widthRect = widthEl.getBoundingClientRect();
+  let availW = Math.max(
+    0,
+    (widthEl.clientWidth || widthRect.width || 0) - widthPadX
+  );
+
+  let availH = Math.max(0, (boxEl.clientHeight || 0) - padY);
+  const cssH = cssPx(boxStyle.height);
+  if (cssH > 0) {
+    availH = Math.max(availH, cssH - padY);
+  }
+
+  if (pane && boxEl === pane && !mobile) {
     const head = pane.querySelector('.preview-head');
     if (head) {
       const headStyle = window.getComputedStyle(head);
       availH -= head.offsetHeight;
-      availH -= (parseFloat(headStyle.marginBottom) || 0);
+      availH -= parseFloat(headStyle.marginBottom) || 0;
     }
   }
 
-  if (viewport) {
-    const vpStyle = window.getComputedStyle(viewport);
-    availW -= (parseFloat(vpStyle.paddingLeft) || 0) + (parseFloat(vpStyle.paddingRight) || 0);
-    availH -= (parseFloat(vpStyle.paddingTop) || 0) + (parseFloat(vpStyle.paddingBottom) || 0);
+  if (!mobile) {
+    const minHCss = cssPx(boxStyle.minHeight);
+    const maxHCss = cssPx(boxStyle.maxHeight);
+    if (minHCss > 0) {
+      availH = Math.max(availH, minHCss - padY);
+    }
+    if (maxHCss > 0) {
+      availH = availH > 0 ? Math.min(availH, maxHCss - padY) : maxHCss - padY;
+    }
   }
 
+  if (!(availW > 40)) {
+    availW = FALLBACK_W;
+  }
+
+  if (mobile) {
+    // Tall virtual height → width-limited fit; pane height follows the SVG.
+    availH = Math.max(availW * 2, 400);
+  } else {
+    const FALLBACK_H = Math.min(Math.round(window.innerHeight * 0.45), 400);
+    if (!(availH > 40)) {
+      availH = FALLBACK_H;
+    }
+  }
+
+  const inset = mobile ? 2 : 4;
   return {
-    availW: Math.max(0, availW),
-    availH: Math.max(0, availH),
+    availW: Math.max(0, Math.floor(availW - inset)),
+    availH: Math.max(0, Math.floor(availH - inset)),
     viewport,
+    mobile,
   };
 }
 
 function computeBaseFit(availW, availH, aspect) {
+  if (availW <= 0 || availH <= 0) return { baseW: 0, baseH: 0 };
   if (availW / availH >= aspect) {
     const baseH = availH;
     return { baseW: aspect * baseH, baseH };
@@ -200,23 +256,28 @@ function computeBaseFit(availW, availH, aspect) {
 function applyFitDimensions(svgRoot, wrapperEl, w, h) {
   svgRoot.style.height = `${h}px`;
   svgRoot.style.width = `${w}px`;
-  svgRoot.style.maxHeight = 'none';
-  svgRoot.style.maxWidth = 'none';
+  svgRoot.style.maxHeight = `${h}px`;
+  svgRoot.style.maxWidth = `${w}px`;
   svgRoot.style.display = 'block';
 
   const inner = wrapperEl.querySelector('.svg-canvas-inner') || svgRoot.parentElement;
   if (inner) {
     inner.style.width = `${w}px`;
     inner.style.height = `${h}px`;
+    inner.style.maxWidth = `${w}px`;
+    inner.style.maxHeight = `${h}px`;
   }
   wrapperEl.style.width = `${w}px`;
   wrapperEl.style.height = `${h}px`;
+  wrapperEl.style.maxWidth = '100%';
+  wrapperEl.style.maxHeight = isMobileLayout() ? `${h}px` : '100%';
 }
 
 /**
  * Size SVG to fit inside the preview viewport (contain), then apply zoom.
- * At zoom ≤ PREVIEW_SCROLL_ZOOM_THRESHOLD: full image visible, no scroll.
- * Above threshold: scaled up with scroll (stable base size avoids scrollbar jitter).
+ * At zoom ≤ PREVIEW_SCROLL_ZOOM_THRESHOLD (100%): full image visible, no scroll.
+ * Mobile 100%: width-filling contain-fit (as large as possible within width).
+ * Above threshold: scaled up with scroll.
  */
 export function fitSvgToContainerHeight(svgRoot, wrapperEl, zoom = 1) {
   if (!svgRoot || !wrapperEl) return;
@@ -228,6 +289,21 @@ export function fitSvgToContainerHeight(svgRoot, wrapperEl, zoom = 1) {
   if (!vb) return;
 
   const aspect = vb.w / vb.h;
+  const zoomFactor = Number.isFinite(Number(zoom)) && Number(zoom) > 0 ? Number(zoom) : 1;
+
+  // At ≤100%: always recompute contain-fit from the live screen box.
+  if (zoomFactor <= PREVIEW_SCROLL_ZOOM_THRESHOLD) {
+    const fit = computeBaseFit(availW, availH, aspect);
+    const w = Math.max(1, Math.floor(fit.baseW));
+    const h = Math.max(1, Math.floor(fit.baseH));
+    wrapperEl.dataset.baseW = String(fit.baseW);
+    wrapperEl.dataset.baseH = String(fit.baseH);
+    wrapperEl.dataset.layoutSig = `${Math.round(availW)}x${Math.round(availH)}`;
+    applyFitDimensions(svgRoot, wrapperEl, w, h);
+    return;
+  }
+
+  // Zoomed in: keep a stable base from the last fit-to-screen size.
   const layoutSig = `${Math.round(availW)}x${Math.round(availH)}`;
   if (wrapperEl.dataset.layoutSig !== layoutSig) {
     delete wrapperEl.dataset.baseW;
@@ -245,27 +321,12 @@ export function fitSvgToContainerHeight(svgRoot, wrapperEl, zoom = 1) {
     wrapperEl.dataset.baseH = String(baseH);
   }
 
-  const zoomFactor = Number.isFinite(Number(zoom)) && Number(zoom) > 0 ? Number(zoom) : 1;
-  let w = baseW * zoomFactor;
-  let h = baseH * zoomFactor;
-
-  if (zoomFactor <= PREVIEW_SCROLL_ZOOM_THRESHOLD) {
-    if (w > availW) {
-      w = availW;
-      h = w / aspect;
-    }
-    if (h > availH) {
-      h = availH;
-      w = h * aspect;
-    }
-    w = Math.floor(w);
-    h = Math.floor(h);
-  } else {
-    w = Math.round(w);
-    h = Math.round(h);
-  }
-
-  applyFitDimensions(svgRoot, wrapperEl, w, h);
+  applyFitDimensions(
+    svgRoot,
+    wrapperEl,
+    Math.round(baseW * zoomFactor),
+    Math.round(baseH * zoomFactor)
+  );
 }
 
 /** Prepare SVG root for responsive display without altering internal coordinates. */

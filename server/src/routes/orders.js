@@ -142,8 +142,12 @@ router.get('/:orderId/items/:itemId/verses', async (req, res, next) => {
     const found = await orderService.getOrderItemVerses(orderId, itemId);
     if (!found) return res.status(404).json({ error: 'Order item not found.' });
 
-    // Fill any unset verse with the master default so the UI has a full set.
-    const defaults = svgService.getDefaults();
+    // Fill any unset verse with the size/template default so the UI has a full set.
+    const templateContext = await templateResolver.resolveTemplate({
+      orderId,
+      orderItemId: itemId,
+    });
+    const defaults = svgService.getDefaults(templateContext);
     const meta = await orderService.getOrderItemMeta(orderId, itemId);
     res.json({ ...found, values: { ...defaults, ...found.values }, defaults, meta });
   } catch (err) {
@@ -264,6 +268,7 @@ async function exportDxfEmailHandler(req, res, next) {
       modelRows.map((row) => [row.model_code, row.model_name])
     );
     const item = details?.item || {};
+    const isResend = String(item.status || '').toLowerCase() === 'completed';
     const { mainModelName, formatAccessoryLine } = require('../utils/orderItemDisplay');
     const modelName = mainModelName(
       { ...item, model_name: meta?.model_name, product_name: meta?.product_name },
@@ -283,39 +288,56 @@ async function exportDxfEmailHandler(req, res, next) {
       console.warn('[pdf] export during email failed:', pdfErr.message);
     }
 
+    // Verses print page (plate SVG) — for the store only, not the system admin.
+    let versesPrintPdf = null;
+    let versesPrintWarning = null;
+    try {
+      const { exportVersesPrintPdf } = require('../export/versesPrintPdfService');
+      versesPrintPdf = await exportVersesPrintPdf(orderId, itemId, {
+        getOrderItemVerses: orderService.getOrderItemVerses,
+      });
+    } catch (versesErr) {
+      versesPrintWarning = versesErr.message;
+      console.warn('[verses-print-pdf] export failed:', versesErr.message);
+    }
+
     const quarterFiles = sortQuartersForExport(result.quarters).map((q) => ({
       filename: quarterDxfFilename(orderId, itemId, q.id),
       content: q.dxf,
       label: q.label,
     }));
 
+    const mailMeta = {
+      orderId,
+      customerName: details?.customerName || null,
+      customerPhone: details?.customerPhone || null,
+      modelName,
+      accessoryLine: accessoryLine || null,
+      isResend,
+    };
+
     const { sentTo, attachmentCount } = await sendDxfEmail({
       quarterFiles,
+      // Admin keeps the order-form PDF (not the verses print page).
       pdfFilename: pdfResult ? `order-${orderId}-item-${itemId}.pdf` : null,
       pdfContent: pdfResult?.pdfBytes || null,
-      meta: {
-        orderId,
-        customerName: details?.customerName || null,
-        modelName,
-        accessoryLine: accessoryLine || null,
-      },
+      meta: mailMeta,
     });
 
-    // Allowed extension #2: parallel copy to the authenticated store mailbox (PDF only).
-    // Does not alter the admin/system send above.
+    // Store mailbox: verses print page PDF only (portrait plate layout).
     let storeEmailResult = null;
     try {
       const { sendStoreOrderPdfCopy } = require('../stores/storeSmtpService');
       const storeId = req.store?.storeId || null;
       storeEmailResult = await sendStoreOrderPdfCopy({
         storeId,
-        pdfFilename: pdfResult ? `order-${orderId}-item-${itemId}.pdf` : null,
-        pdfContent: pdfResult?.pdfBytes || null,
+        pdfFilename: versesPrintPdf
+          ? `order-${orderId}-item-${itemId}-verses.pdf`
+          : null,
+        pdfContent: versesPrintPdf?.pdfBytes || null,
         meta: {
-          orderId,
-          customerName: details?.customerName || null,
-          modelName,
-          accessoryLine: accessoryLine || null,
+          ...mailMeta,
+          kind: 'verses-print',
         },
       });
     } catch (storeMailErr) {
@@ -344,14 +366,17 @@ async function exportDxfEmailHandler(req, res, next) {
       pdfFilePath: null,
       pdfAttached: Boolean(pdfResult?.pdfBytes),
       storeEmail: storeEmailResult,
+      completedItemId: completed.completedItemId,
       deletedItemId: completed.deletedItemId,
       remainingItems: completed.remainingItems,
+      items: completed.items || completed.remainingItems,
       remainingCount: completed.remainingCount,
       orderSubmitted: completed.orderSubmitted,
       status: completed.orderSubmitted ? 'submitted' : 'open',
       warnings: [
         ...result.warnings,
         ...(pdfWarning ? [`PDF: ${pdfWarning}`] : []),
+        ...(versesPrintWarning ? [`PDF פסוקים: ${versesPrintWarning}`] : []),
         ...(storeEmailResult?.skipped && storeEmailResult?.error
           ? [`מייל לחנות לא נשלח: ${storeEmailResult.error}`]
           : storeEmailResult?.skipped && storeEmailResult?.reason === 'smtp_incomplete'
@@ -359,9 +384,10 @@ async function exportDxfEmailHandler(req, res, next) {
             : storeEmailResult?.skipped && storeEmailResult?.reason === 'no_store'
               ? ['מייל לחנות לא נשלח: אין סשן חנות פעיל.']
               : storeEmailResult?.skipped && storeEmailResult?.reason === 'no_pdf'
-                ? ['מייל לחנות לא נשלח: לא נוצר קובץ PDF.']
+                ? ['מייל לחנות לא נשלח: לא נוצר קובץ PDF פסוקים.']
                 : []),
       ],
+      storeVersesPdfAttached: Boolean(versesPrintPdf?.pdfBytes),
     });
   } catch (err) {
     next(err);
@@ -412,8 +438,10 @@ async function completeOrderHandler(req, res, next) {
     res.json({
       ok: true,
       pdfFilePath: null,
+      completedItemId: completed.completedItemId,
       deletedItemId: completed.deletedItemId,
       remainingItems: completed.remainingItems,
+      items: completed.items || completed.remainingItems,
       remainingCount: completed.remainingCount,
       orderSubmitted: completed.orderSubmitted,
       status: completed.orderSubmitted ? 'submitted' : 'open',

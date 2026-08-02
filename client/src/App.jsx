@@ -66,9 +66,14 @@ function mobileStepPair(stepId) {
 }
 
 const SESSION_REFRESH_THROTTLE_MS = 2 * 60 * 1000;
+const ORDER_RESEND_NOTICE =
+  'יש לתאם מול המנהל מערכת את ההזמנה מחדש';
+const ORDER_RESEND_NOTICE_MS = 3500;
 
 export default function App() {
   const isMobile = useMobileLayout();
+  const appTopRef = useRef(null);
+  const [appTopHeight, setAppTopHeight] = useState(96);
   const [storeBooting, setStoreBooting] = useState(true);
   const [store, setStore] = useState(null);
   const [admin, setAdmin] = useState(null);
@@ -78,6 +83,7 @@ export default function App() {
   const [itemSupportsVerses, setItemSupportsVerses] = useState(true);
   const [editorTemplateKey, setEditorTemplateKey] = useState('');
   const [flash, setFlash] = useState('');
+  const [resendNoticeOpen, setResendNoticeOpen] = useState(false);
   const [restoring, setRestoring] = useState(() => Boolean(loadPersistedUi()?.phone));
   const [leaveDetailsBusy, setLeaveDetailsBusy] = useState(false);
   const [leaveDetailsOpen, setLeaveDetailsOpen] = useState(false);
@@ -87,6 +93,7 @@ export default function App() {
   const [detailsMayPromptDelete, setDetailsMayPromptDelete] = useState(false);
   const detailsRef = useRef(null);
   const lastSessionRefreshRef = useRef(0);
+  const resendNoticeTimerRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -119,6 +126,12 @@ export default function App() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => () => {
+    if (resendNoticeTimerRef.current) {
+      window.clearTimeout(resendNoticeTimerRef.current);
+    }
   }, []);
 
   const handleStoreAuthenticated = useCallback((nextStore) => {
@@ -271,17 +284,15 @@ export default function App() {
     setActiveItem(item);
     setDetailsMayPromptDelete(false);
     setFlash('');
-    if (!item.supports_verses) {
-      setStep('product');
-      return;
-    }
     try {
       const data = await fetchOrderItemDetails(session.order.order_id, item.order_item_id);
-      setItemSupportsVerses(data.supportsVerses !== false);
+      const supports = data.supportsVerses !== false;
+      setItemSupportsVerses(supports);
       setEditorTemplateKey(
         `${data.item?.plate_diameter ?? ''}:${data.item?.size_code ?? ''}`
       );
-      if (data.supportsVerses === false) {
+      // Sent items without verses: show details with “ההזמנה נשלחה”.
+      if (!supports) {
         setStep('details');
         return;
       }
@@ -466,22 +477,29 @@ export default function App() {
     setFlash('');
   };
 
-  const handleOrderComplete = (completedItemId, remainingItemsFromServer) => {
-    const removedId = Number(completedItemId ?? activeItem?.order_item_id);
-    if (session?.order?.order_id && Number.isFinite(removedId)) {
-      clearVerseDraft(session.order.order_id, removedId);
-      clearVerseBakeCache(session.order.order_id, removedId);
+  const handleOrderComplete = (completedItemId, _items, options = {}) => {
+    const doneId = Number(completedItemId ?? activeItem?.order_item_id);
+    if (session?.order?.order_id && Number.isFinite(doneId)) {
+      clearVerseDraft(session.order.order_id, doneId);
+      clearVerseBakeCache(session.order.order_id, doneId);
     }
-    const fromSession = (session?.items || []).filter(
-      (it) => Number(it.order_item_id) !== removedId
-    );
-    const nextItems = Array.isArray(remainingItemsFromServer)
-      ? remainingItemsFromServer
-      : fromSession;
-    setSession((s) => (s ? { ...s, items: nextItems } : s));
-    setActiveItem(null);
-    setStep(nextItems.length > 0 ? 'resume' : 'product');
-    setFlash('');
+
+    const finish = () => {
+      setResendNoticeOpen(false);
+      endSession('ההזמנה הושלמה. ניתן להתחיל הזמנה חדשה.');
+    };
+
+    // Resend of an already-sent item: brief notice, then return to identify.
+    if (options.isResend) {
+      if (resendNoticeTimerRef.current) {
+        window.clearTimeout(resendNoticeTimerRef.current);
+      }
+      setResendNoticeOpen(true);
+      resendNoticeTimerRef.current = window.setTimeout(finish, ORDER_RESEND_NOTICE_MS);
+      return;
+    }
+
+    finish();
   };
 
   const logout = () => {
@@ -501,6 +519,26 @@ export default function App() {
   const showAppTop = headerMode !== 'identify' || isMobile;
   const showSiteHeader = headerMode !== 'identify';
   const showStepsNav = Boolean(session) || (isMobile && headerMode === 'identify');
+
+  // Mobile: keep header pinned; spacer height tracks the fixed bar.
+  useEffect(() => {
+    if (!isMobile || !showAppTop) return undefined;
+    const el = appTopRef.current;
+    if (!el) return undefined;
+    const sync = () => {
+      const h = Math.ceil(el.getBoundingClientRect().height);
+      if (h > 0) setAppTopHeight(h);
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    window.addEventListener('resize', sync);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', sync);
+    };
+  }, [isMobile, showAppTop, headerMode, showSiteHeader, showStepsNav, showCustomerInHeader]);
+
   const stepClickable = (s) => {
     if (isMobile && !visibleSteps.includes(s)) return false;
     if (s === 'identify') return true;
@@ -590,7 +628,7 @@ export default function App() {
           <div className="identify-brand">
             <img
               className="identify-logo"
-              src="/img-judaica-logo.png?v=3"
+              src="/img-judaica-logo-with-bg.png?v=5"
               alt="IMG JUDAICA LTD — אי אמ ג'י יודאיקה בע״מ"
             />
           </div>
@@ -601,14 +639,25 @@ export default function App() {
   }
 
   return (
-    <div className="app" dir="rtl">
+    <div
+      className="app"
+      dir="rtl"
+      style={
+        isMobile && showAppTop
+          ? { '--app-top-mobile-h': `${appTopHeight}px` }
+          : undefined
+      }
+    >
       {showAppTop && (
-        <div className={`app-top app-top--${headerMode}${isMobile ? ' app-top--mobile' : ''}`}>
+        <div
+          ref={appTopRef}
+          className={`app-top app-top--${headerMode}${isMobile ? ' app-top--mobile' : ''}`}
+        >
           {showSiteHeader ? (
             <header className={`site-header site-header--${headerMode}`}>
               <img
                 className="site-logo"
-                src="/img-judaica-logo.png?v=3"
+                src="/img-judaica-logo-with-bg.png?v=5"
                 alt="IMG JUDAICA LTD — אי אמ ג'י יודאיקה בע״מ"
               />
               {showCustomerInHeader ? (
@@ -647,8 +696,31 @@ export default function App() {
           )}
         </div>
       )}
+      {isMobile && showAppTop ? (
+        <div
+          className="app-top-mobile-spacer"
+          style={{ height: appTopHeight }}
+          aria-hidden="true"
+        />
+      ) : null}
 
       {flash && <div className="flash">{flash}</div>}
+
+      {resendNoticeOpen ? (
+        <div
+          className="confirm-overlay order-resend-notice"
+          role="alertdialog"
+          aria-modal="true"
+          aria-live="assertive"
+          aria-labelledby="order-resend-notice-title"
+        >
+          <div className="card confirm-dialog order-resend-notice-dialog">
+            <p id="order-resend-notice-title" className="confirm-dialog-message">
+              {ORDER_RESEND_NOTICE}
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       <ConfirmDialog
         open={inactivityWarningOpen}
@@ -736,6 +808,7 @@ export default function App() {
             ref={detailsRef}
             orderId={session.order.order_id}
             itemId={activeItem.order_item_id}
+            orderSent={activeItem.status === 'completed'}
             onContinueToVerses={goToEditor}
             onFinishWithoutVerses={handleOrderComplete}
             onSupportsVersesChange={setItemSupportsVerses}
@@ -752,6 +825,7 @@ export default function App() {
             orderId={session.order.order_id}
             itemId={activeItem.order_item_id}
             templateKey={editorTemplateKey}
+            orderSent={activeItem.status === 'completed'}
             onEditOrderDetails={goToDetails}
             onOrderComplete={handleOrderComplete}
           />

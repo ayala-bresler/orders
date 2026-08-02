@@ -5,7 +5,7 @@ const path = require('path');
 const opentype = require('opentype.js');
 const { svgPathProperties } = require('svg-path-properties');
 const { apply } = require('./transform');
-const { pathGuidePoints } = require('./svgExtract');
+const { pathGuidePoints, hasUsablePathGuide } = require('./svgExtract');
 const { TEMPLATE, SVG_OUTER_RX, SVG_INNER_RX, MEDALLION_CENTERS } = require('./templateRegistry');
 const { FIELD_BY_HREF } = require('../config/template');
 const { pathToPolylines, transformPolylines } = require('./pathUtils');
@@ -274,7 +274,7 @@ function measureVerseInkRadialBounds(
   cy,
   letterSpacingEm = 0
 ) {
-  if (!font || !pathGuidePoints(pathGuide).length) return null;
+  if (!font || !hasUsablePathGuide(pathGuide)) return null;
 
   const sampler = createPathGuideSampler(pathGuide);
   const len = sampler.length();
@@ -312,7 +312,7 @@ function measureVerseInkRadialBounds(
  * Used for ring centering — avoids walking every verse glyph.
  */
 function measureBetProbeRadialBounds(font, fontSize, pathGuide, midDist, dyPx, cx, cy) {
-  if (!font || !pathGuidePoints(pathGuide).length) return null;
+  if (!font || !hasUsablePathGuide(pathGuide)) return null;
   const sampler = createPathGuideSampler(pathGuide);
   const len = sampler.length();
   const dist = Math.max(0, Math.min(len, midDist));
@@ -596,7 +596,7 @@ function guessRingCenteringDyPx(font, text, fontSize, layout, rTarget) {
  */
 function computeRingCenteringDyPx(font, text, fontSize, layout, options = {}) {
   const pathGuide = layout?.pathGuide ?? (layout?.pathPts ? { points: layout.pathPts } : null);
-  if (!font || !fontSize || !pathGuidePoints(pathGuide).length) return 0.4 * fontSize;
+  if (!font || !fontSize || !hasUsablePathGuide(pathGuide)) return 0.4 * fontSize;
 
   const { startOffset, textAnchor, cx, cy } = layout;
   const innerRx = Number(layout.innerRx);
@@ -701,7 +701,7 @@ function exportParentDyForTextItems(font, items, pathById, templateMeta, fieldBy
   if (!field) return null;
 
   const pathGuide = pathById[pathId];
-  if (!pathGuide || !pathGuidePoints(pathGuide).length) return null;
+  if (!hasUsablePathGuide(pathGuide)) return null;
 
   const center =
     templateMeta?.medallionCenters?.[field.corner || field.group] ||
@@ -771,7 +771,7 @@ function layoutTextItemToPaths(font, item, pathById) {
 
   const pathId = item.pathId.startsWith('#') ? item.pathId.slice(1) : item.pathId;
   const pathGuide = pathById[pathId];
-  if (!pathGuide || !pathGuidePoints(pathGuide).length) return paths;
+  if (!hasUsablePathGuide(pathGuide)) return paths;
 
   layoutTextPathItem(font, item, pathGuide, polylines, paths);
   return paths;
@@ -863,7 +863,7 @@ function textToOutlinePaths(texts, pathById) {
 
     const pathId = item.pathId.startsWith('#') ? item.pathId.slice(1) : item.pathId;
     const pathGuide = pathById[pathId];
-    if (!pathGuide || !pathGuidePoints(pathGuide).length) continue;
+    if (!hasUsablePathGuide(pathGuide)) continue;
 
     layoutTextPathItem(font, item, pathGuide, polylines, paths);
   }

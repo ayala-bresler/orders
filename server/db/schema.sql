@@ -266,7 +266,9 @@ CREATE TABLE IF NOT EXISTS order_items (
     customized_svg_path TEXT            NULL,
     verse_font_scales   JSONB           NULL,
     size_code           TEXT            NULL,
-    product_type_code   VARCHAR(10)     NULL
+    product_type_code   VARCHAR(10)     NULL,
+    -- open = editable; completed = finished (DXF/PDF sent), kept on the order page
+    status              VARCHAR(20)     NOT NULL DEFAULT 'open'
 );
 
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS customized_svg      TEXT;
@@ -277,5 +279,10 @@ ALTER TABLE order_items ADD COLUMN IF NOT EXISTS breastplate_model   VARCHAR(10)
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS pointer_model       VARCHAR(10);
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS size_code           TEXT;
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_type_code   VARCHAR(10);
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS status              VARCHAR(20);
+UPDATE order_items SET status = 'open' WHERE status IS NULL;
+ALTER TABLE order_items ALTER COLUMN status SET DEFAULT 'open';
+ALTER TABLE order_items ALTER COLUMN status SET NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items (order_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_status ON order_items (order_id, status);
