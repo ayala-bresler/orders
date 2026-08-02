@@ -76,6 +76,7 @@ function removeGuidePaths(doc) {
 }
 
 function itemHasVisibleText(item) {
+  // Trim: blank / whitespace-only verses are intentionally omitted from DXF.
   return Boolean(String(item?.text || '').trim());
 }
 

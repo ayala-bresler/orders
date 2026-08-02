@@ -25,10 +25,10 @@ import {
 } from '../utils/cornerSymbols.js';
 import FontSizeControl from './FontSizeControl.jsx';
 
-/** Icon paths (local coords, tip-up) — match server cornerSymbols shapes. */
+/** Icon paths (local coords, tip-up) — match server sparkle4 / star5 / diamond. */
 const SYMBOL_ICON_PATHS = {
   sparkle4:
-    'M0 -4.2 C0.924 -0.924 0.924 -0.924 4.2 0 C0.924 0.924 0.924 0.924 0 4.2 C-0.924 0.924 -0.924 0.924 -4.2 0 C-0.924 -0.924 -0.924 -0.924 0 -4.2 Z',
+    'M0 -4.2 C0.756 -0.756 0.756 -0.756 4.2 0 C0.756 0.756 0.756 0.756 0 4.2 C-0.756 0.756 -0.756 0.756 -4.2 0 C-0.756 -0.756 -0.756 -0.756 0 -4.2 Z',
   star5:
     'M0 -4.2 L1.037 -1.427 L3.994 -1.298 L1.678 0.545 L2.469 3.398 L0 1.764 L-2.469 3.398 L-1.678 0.545 L-3.994 -1.298 L-1.037 -1.427 Z',
   diamond: 'M0 -2.45 L2.45 0 L0 2.45 L-2.45 0 Z',
@@ -148,9 +148,24 @@ function CornerSymbolsControls({ corner, entry, onPatch }) {
             >
               −
             </button>
-            <span className="corner-symbols-count-value" aria-live="polite">
-              {count}
-            </span>
+            <input
+              className="corner-symbols-count-input"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={SYMBOL_COUNT_MAX}
+              step={1}
+              value={count}
+              aria-label={`כמות חופשית — ${corner}`}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw === '') {
+                  setCount(0);
+                  return;
+                }
+                setCount(Number(raw));
+              }}
+            />
             <button
               type="button"
               className="corner-symbols-step"

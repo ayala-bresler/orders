@@ -227,6 +227,12 @@ async function exportDxfHandler(req, res, next) {
     const { buildQuartersZip } = require('../export/dxfExportService');
     const { orderId, itemId, result } = await buildDxfExport(req);
 
+    if (!result?.quarters?.length) {
+      const err = new Error('ייצוא DXF נכשל — לא נוצרו קבצי רבעים.');
+      err.status = 500;
+      throw err;
+    }
+
     if (result.warnings.length) {
       res.setHeader('X-Export-Warnings', result.warnings.join(' | '));
     }
@@ -240,6 +246,9 @@ async function exportDxfHandler(req, res, next) {
       )
       .send(zip);
   } catch (err) {
+    if (!err.status && err.message) {
+      err.message = `ייצוא DXF נכשל: ${err.message}`;
+    }
     next(err);
   }
 }
@@ -390,6 +399,9 @@ async function exportDxfEmailHandler(req, res, next) {
       storeVersesPdfAttached: Boolean(versesPrintPdf?.pdfBytes),
     });
   } catch (err) {
+    if (!err.status && err.message) {
+      err.message = `שליחת DXF נכשלה: ${err.message}`;
+    }
     next(err);
   }
 }

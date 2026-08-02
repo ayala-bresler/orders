@@ -79,43 +79,110 @@ function extractBakedPathPolylines(doc) {
   return polylines;
 }
 
-/**
- * Convert one quarter SVG (paths-only, origin at 0,0) → DXF string.
- */
-function svgToDxf(preparedSvgString) {
-  const warnings = [];
-  const doc = new DOMParser().parseFromString(preparedSvgString, 'image/svg+xml');
-  const svgHeight = parseSvgHeight(preparedSvgString);
-  const all = extractBakedPathPolylines(doc);
+function isFinitePoint(pt) {
+  return (
+    Array.isArray(pt) &&
+    pt.length >= 2 &&
+    Number.isFinite(pt[0]) &&
+    Number.isFinite(pt[1])
+  );
+}
 
+/** Empty but valid DXF when a quarter has no drawable geometry (e.g. all verses blank). */
+function emptyDxfString() {
   const draw = new Drawing();
   draw.setUnits('Unitless');
   draw.addLayer('geometry', Drawing.ACI.WHITE, 'CONTINUOUS');
   draw.setActiveLayer('geometry');
+  return draw.toDxfString();
+}
 
-  for (const line of all) {
-    if (!line || line.length < 2) continue;
-    const mapped = mapPolyline(line, EXPORT_SCALE, svgHeight);
-    draw.drawPolyline(mapped, false);
+/**
+ * Convert one quarter SVG (paths-only, origin at 0,0) → DXF string.
+ * Succeeds even when the quarter has no paths (blank verses / empty geometry).
+ */
+function svgToDxf(preparedSvgString) {
+  const warnings = [];
+  try {
+    const doc = new DOMParser().parseFromString(
+      preparedSvgString || '',
+      'image/svg+xml'
+    );
+    const svgHeight = parseSvgHeight(preparedSvgString || '');
+    const all = extractBakedPathPolylines(doc);
+
+    const draw = new Drawing();
+    draw.setUnits('Unitless');
+    draw.addLayer('geometry', Drawing.ACI.WHITE, 'CONTINUOUS');
+    draw.setActiveLayer('geometry');
+
+    let drawn = 0;
+    for (const line of all) {
+      if (!line || line.length < 2) continue;
+      const mapped = mapPolyline(line, EXPORT_SCALE, svgHeight).filter(isFinitePoint);
+      if (mapped.length < 2) continue;
+      draw.drawPolyline(mapped, false);
+      drawn += 1;
+    }
+
+    if (!drawn) {
+      warnings.push('רבע ללא גיאומטריה מצוירת (פסוקים ריקים או ללא קווים).');
+    }
+
+    return { dxf: draw.toDxfString(), warnings };
+  } catch (err) {
+    warnings.push(
+      `המרת רבע ל-DXF נכשלה: ${err && err.message ? err.message : err}`
+    );
+    return { dxf: emptyDxfString(), warnings };
   }
-
-  return { dxf: draw.toDxfString(), warnings };
 }
 
 /**
  * Split raw SVG into 4 quarters and convert each to DXF (in memory only).
  */
 function exportQuartersFromRawSvg(rawSvgString, saveOptions = null) {
-  const scaleFactor = saveOptions?.scaleFactor;
-  const split = splitSvgIntoQuarters(
-    rawSvgString,
-    scaleFactor != null ? { scaleFactor } : {}
-  );
+  if (rawSvgString == null || !String(rawSvgString).trim()) {
+    const err = new Error('אין SVG לייצוא DXF (גם עם פסוקים ריקים נדרש תבנית).');
+    err.status = 400;
+    throw err;
+  }
+
+  let split;
+  try {
+    const scaleFactor = saveOptions?.scaleFactor;
+    split = splitSvgIntoQuarters(
+      rawSvgString,
+      scaleFactor != null ? { scaleFactor } : {}
+    );
+  } catch (err) {
+    const wrapped = new Error(
+      `פיצול SVG לרבעים נכשל (גם עם פסוק חסר אמור לעבוד): ${
+        err && err.message ? err.message : err
+      }`
+    );
+    wrapped.status = err && err.status ? err.status : 500;
+    wrapped.cause = err;
+    throw wrapped;
+  }
+
   const warnings = [...split.warnings];
   const quarters = [];
 
   for (const def of QUARTER_DEFS) {
     const q = split.quarters[def.id];
+    if (!q?.svg) {
+      warnings.push(`רבע ${def.id} חסר אחרי הפיצול — נוצר DXF ריק.`);
+      quarters.push({
+        id: def.id,
+        label: def.label,
+        svg: '',
+        dxf: emptyDxfString(),
+        viewBox: q?.viewBox || '0 0 1 1',
+        bounds: q?.bounds || null,
+      });
+      continue;
+    }
     const { dxf, warnings: dxfWarnings } = svgToDxf(q.svg);
     warnings.push(...dxfWarnings);
     quarters.push({

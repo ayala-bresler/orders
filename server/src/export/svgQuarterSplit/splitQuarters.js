@@ -29,8 +29,14 @@ function quarterBounds(def, xMid, yMid, canvasWidth, canvasHeight) {
 }
 
 function shapeBBox(points) {
-  const xs = points.map((p) => p[0]);
-  const ys = points.map((p) => p[1]);
+  if (!points || !points.length) {
+    return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+  }
+  const xs = points.map((p) => p[0]).filter(Number.isFinite);
+  const ys = points.map((p) => p[1]).filter(Number.isFinite);
+  if (!xs.length || !ys.length) {
+    return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+  }
   return {
     minX: Math.min(...xs),
     minY: Math.min(...ys),

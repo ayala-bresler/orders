@@ -296,20 +296,37 @@ function applyDynamicRingDy(doc, ctx, stylesMap) {
     const verseStyle = styleForKey(stylesMap, field.key, basePx);
     const fontSize = Math.max(MIN_FONT, verseStyle.fontSizePx);
     const text = normalizeVerseText(textPath.textContent || '');
+    // Empty / whitespace-only verses: keep layout attrs, skip dy solve (export-safe).
+    if (!String(text).trim()) {
+      textPath.setAttribute('text-anchor', 'middle');
+      textPath.setAttribute('startOffset', '50%');
+      textEl.setAttribute('dominant-baseline', 'central');
+      textEl.setAttribute('alignment-baseline', 'middle');
+      continue;
+    }
 
     textPath.setAttribute('text-anchor', 'middle');
     textPath.setAttribute('startOffset', '50%');
 
-    const dyEm = computeRingCenteringDyEm(font, text, fontSize, {
-      pathGuide,
-      startOffset: '50%',
-      textAnchor: 'middle',
-      cx: center.cx,
-      cy: center.cy,
-      innerRx: radii.innerRx,
-      outerRx: radii.outerRx,
-      letterSpacingEm: verseStyle.letterSpacingEm || 0,
-    });
+    let dyEm = 0.4;
+    try {
+      dyEm = computeRingCenteringDyEm(font, text, fontSize, {
+        pathGuide,
+        startOffset: '50%',
+        textAnchor: 'middle',
+        cx: center.cx,
+        cy: center.cy,
+        innerRx: radii.innerRx,
+        outerRx: radii.outerRx,
+        letterSpacingEm: verseStyle.letterSpacingEm || 0,
+      });
+    } catch (err) {
+      console.warn(
+        '[ringDy] skip field',
+        field.key,
+        err && err.message ? err.message : err
+      );
+    }
 
     textEl.setAttribute('dominant-baseline', 'central');
     textEl.setAttribute('alignment-baseline', 'middle');
@@ -358,7 +375,12 @@ function renderCustomizedSvg(values = {}, fontScales = {}, templateContext) {
     throw err;
   }
 
-  const doc = parse(loadMasterSvg(ctx.svgPath));
+  // Prefer prepared context SVG (canonical defaults already applied); fall back to disk.
+  const sourceSvg =
+    (typeof ctx.svgRaw === 'string' && ctx.svgRaw.trim()
+      ? ctx.svgRaw
+      : null) || loadMasterSvg(ctx.svgPath);
+  const doc = parse(sourceSvg);
   const {
     applyCanonicalVersesToDoc,
     loadCanonicalVerseDefaultsByKey,
@@ -368,22 +390,23 @@ function renderCustomizedSvg(values = {}, fontScales = {}, templateContext) {
   const nodeMap = indexEditableNodes(doc, ctx.fieldByHref);
   const canonical = loadCanonicalVerseDefaultsByKey();
 
-  // Fill every verse field: non-empty request values win; otherwise canonical defaults.
-  // Empty strings fall back to defaults so placeholders / blank form fields still export text.
+  // Explicit values (including '') win — cleared verses stay cleared in preview/export.
+  // Canonical defaults only when a key is missing from the payload.
   for (const field of ctx.fields) {
-    const provided = Object.prototype.hasOwnProperty.call(clean, field.key)
-      ? clean[field.key]
-      : undefined;
-    const text =
-      provided != null && String(provided).trim() !== ''
-        ? provided
-        : canonical[field.key] || field.defaultText || provided || '';
+    const hasKey = Object.prototype.hasOwnProperty.call(clean, field.key);
+    const text = hasKey
+      ? (clean[field.key] == null ? '' : String(clean[field.key]))
+      : (canonical[field.key] || field.defaultText || '');
     const node = nodeMap.get(field.href);
     if (!node) continue;
     applyVerseLayout(doc, node, text, cleanScales, field);
   }
 
-  applyDynamicRingDy(doc, ctx, cleanScales);
+  try {
+    applyDynamicRingDy(doc, ctx, cleanScales);
+  } catch (err) {
+    console.error('[ringDy] apply failed:', err && err.message ? err.message : err);
+  }
 
   try {
     const { splitFontScalesPayload } = require('../config/cornerSymbols');
@@ -408,10 +431,17 @@ function renderCustomizedSvg(values = {}, fontScales = {}, templateContext) {
 function renderPreviewSvg(values = {}, fontScales = {}, templateContext, options = {}) {
   const customized = renderCustomizedSvg(values, fontScales, templateContext);
   if (!options.bake) return customized;
-  const { bakeTextToPaths } = require('../export/svgBakeText');
-  const doc = parse(customized);
-  bakeTextToPaths(doc);
-  return new XMLSerializer().serializeToString(doc);
+  try {
+    const { bakeTextToPaths } = require('../export/svgBakeText');
+    const doc = parse(customized);
+    bakeTextToPaths(doc);
+    return new XMLSerializer().serializeToString(doc);
+  } catch (err) {
+    // Prefer live text over failing preview/export when bake hits an edge case
+    // (e.g. blank verse + odd path guide).
+    console.error('[bake] failed, returning live SVG:', err && err.message ? err.message : err);
+    return customized;
+  }
 }
 
 function valuesFromColumns(row = {}, templateContext) {

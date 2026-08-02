@@ -3,7 +3,7 @@
 /**
  * Place corner separator symbols in the free gaps between upper/lower verses.
  *
- * Horizontal: center of remaining arc on each side (from measured verse advances).
+ * Horizontal: even spacing of N symbols in each free gap (from measured verse advances).
  * Vertical: R_center = (R_outer + R_inner) / 2 from medallion center.
  */
 
@@ -61,15 +61,19 @@ function samplerFromGuide(guide) {
   const matrix = guide?.matrix || [1, 0, 0, 1, 0, 0];
   const d = guide?.d;
   if (!d) return null;
-  const props = new svgPathProperties(d);
-  return {
-    length: () => props.getTotalLength(),
-    at(dist) {
-      const p = props.getPointAtLength(dist);
-      const [x, y] = apply(matrix, p.x, p.y);
-      return { x, y };
-    },
-  };
+  try {
+    const props = new svgPathProperties(d);
+    return {
+      length: () => props.getTotalLength(),
+      at(dist) {
+        const p = props.getPointAtLength(dist);
+        const [x, y] = apply(matrix, p.x, p.y);
+        return { x, y };
+      },
+    };
+  } catch {
+    return null;
+  }
 }
 
 function angToT(a) {
@@ -245,32 +249,21 @@ function resolveSidePlacements(corner, sideMode, leftGap, rightGap) {
 }
 
 /**
- * Place N symbols centered in the free gap (letter-like pitch).
- * Gap mid is (g0+g1)/2 — recalculated whenever upper/lower advances change.
+ * Place N symbols with even spacing inside the free gap (circle fraction).
+ * Positions at centers of N equal segments: t_i = g0 + (i+0.5)/N * span.
+ * Recalculated whenever upper/lower verse advances change the gap.
  * @returns {number[]} angles in radians
  */
-function clusteredAnglesInGap(gap, count, rCenter, radius, letterSpacingEm) {
+function evenAnglesInGap(gap, count) {
   const g0 = gap[0];
   const g1 = gap[1];
   const span = g1 - g0;
   if (!(span > 1e-4) || count <= 0) return [];
 
-  const spacingEm = Number.isFinite(letterSpacingEm) ? letterSpacingEm : 0;
-  const letterGapFactor = 0.2 + Math.max(0, spacingEm);
-  const pitch = radius * 2 * (1 + letterGapFactor);
-  let stepAng = pitch / Math.max(rCenter, 1);
-  const maxSpanAng = span * 2 * Math.PI * 0.92;
-  if (count > 1 && stepAng * (count - 1) > maxSpanAng) {
-    stepAng = maxSpanAng / (count - 1);
-  }
-
-  const clusterSpan = count > 1 ? stepAng * (count - 1) : 0;
-  const midAng = ((g0 + g1) / 2) * 2 * Math.PI;
-  const start = midAng - clusterSpan / 2;
-
   const out = [];
   for (let i = 0; i < count; i += 1) {
-    out.push(start + i * (count > 1 ? stepAng : 0));
+    const t = g0 + ((i + 0.5) / count) * span;
+    out.push(t * 2 * Math.PI);
   }
   return out;
 }
@@ -305,17 +298,17 @@ function fieldFor(ctx, corner, ring) {
 }
 
 function verseTextForField(field, values, canonical) {
-  const provided =
-    values && Object.prototype.hasOwnProperty.call(values, field.key)
-      ? values[field.key]
-      : undefined;
-  if (provided != null && String(provided).trim() !== '') return provided;
-  return canonical[field.key] || field.defaultText || provided || '';
+  if (values && Object.prototype.hasOwnProperty.call(values, field.key)) {
+    const provided = values[field.key];
+    return provided == null ? '' : String(provided);
+  }
+  return canonical[field.key] || field.defaultText || '';
 }
 
 function verseAdvance(font, text, fontSize, letterSpacingEm) {
   const line = normalizeVerseText(text || '');
-  if (!line) return 0;
+  // Blank verse occupies no arc — free gap spans the full side (DXF-safe).
+  if (!String(line).trim()) return 0;
   return measureTextWidth(font, line, fontSize, letterSpacingEm || 0);
 }
 
@@ -407,7 +400,6 @@ function placeCornerSymbols(
 
   const occupied = [];
   const fontSizes = [];
-  const spacings = [];
 
   for (const field of [upper, lower]) {
     if (!field?.href) continue;
@@ -419,7 +411,6 @@ function placeCornerSymbols(
     const basePx = field.fontSizePx ?? 16;
     const style = styleForKey(stylesMap, field.key, basePx);
     fontSizes.push(style.fontSizePx);
-    spacings.push(style.letterSpacingEm || 0);
     const text = verseTextForField(field, values, canonical);
     const adv = verseAdvance(font, text, style.fontSizePx, style.letterSpacingEm);
     occupied.push(...occupiedIntervals(sampler, adv, center, field.ring));
@@ -429,10 +420,6 @@ function placeCornerSymbols(
     fontSizes.length > 0
       ? fontSizes.reduce((a, b) => a + b, 0) / fontSizes.length
       : 16;
-  const avgSpacing =
-    spacings.length > 0
-      ? spacings.reduce((a, b) => a + b, 0) / spacings.length
-      : 0;
   const radius = symbolRadiusFromFont(avgFont);
 
   const gaps = freeGaps(occupied);
@@ -444,13 +431,8 @@ function placeCornerSymbols(
   const group = ensureGroup();
 
   for (const { gap, side } of sides) {
-    const angles = clusteredAnglesInGap(
-      gap,
-      count,
-      rCenter,
-      radius,
-      avgSpacing
-    );
+    // Even spacing of N symbols across the free gap between verse ends.
+    const angles = evenAnglesInGap(gap, count);
     angles.forEach((ang, i) => {
       if (!Number.isFinite(ang)) return;
       const x = center.cx + rCenter * Math.cos(ang);

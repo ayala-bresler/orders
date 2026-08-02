@@ -393,17 +393,15 @@ export default function TemplateEditor({
         setSaveAcknowledged(true);
       }
 
-      // Empty fields should export the template defaults (same as on-screen placeholders).
-      exportValues = { ...defaults, ...exportValues };
+      // Export exactly what is on screen / saved — cleared verses stay empty (no default refill).
+      const finalValues = {};
       for (const f of fields) {
         const v = exportValues[f.key];
-        if (v == null || String(v).trim() === '') {
-          exportValues[f.key] = defaults[f.key] || f.defaultText || '';
-        }
+        finalValues[f.key] = v == null ? '' : String(v);
       }
+      exportValues = finalValues;
 
-      // Keep on-screen bake in sync for print; DXF email uses values so the server
-      // can strip orientation labels/rings before bake (preparedSvg already has them as glyphs).
+      // Keep on-screen bake in sync for print; DXF email uses the same values.
       try {
         await ensureBakedSvg(exportValues, exportScales);
       } catch {

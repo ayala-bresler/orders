@@ -14,7 +14,7 @@ const CORNER_SYMBOLS_KEY = '__cornerSymbols';
 
 const SYMBOL_TYPES = ['sparkle4', 'star5', 'diamond'];
 const SYMBOL_TYPE_LABELS = {
-  sparkle4: 'כוכב 4 פינות מעוגל',
+  sparkle4: 'כוכב 4 פינות מעוגל קעור',
   star5: 'כוכב סטנדרטי',
   diamond: 'מעוין',
 };
@@ -26,8 +26,11 @@ const SYMBOL_SIDES_LABELS = {
   left: 'L',
 };
 
-/** Soft ceiling only — prevents runaway SVG from accidental huge inputs. */
-const SYMBOL_COUNT_MAX = 99;
+/**
+ * Soft ceiling only (runaway guard). UI accepts any count up to this;
+ * placement uses even spacing in the free gap for any N ≥ 1.
+ */
+const SYMBOL_COUNT_MAX = 999;
 
 const SYMBOL_BASE_RADIUS = 4.2;
 
@@ -157,18 +160,19 @@ function diamondPathD(outerR) {
 }
 
 /**
- * 4-point rounded sparkle: sharp tips N/E/S/W, concave arcs between tips.
- * Control distance tuned for a readable filled mark (not a hairline).
+ * 4-point sparkle: sharp tips N/E/S/W, concave arcs between tips (pull inward).
+ * Clean cubic path — control points sit toward the origin for a clear concave waist.
  */
 function sparkle4PathD(outerR) {
   const R = Math.max(0.5, Number(outerR) || SYMBOL_BASE_RADIUS);
-  const k = R * 0.22;
+  // Concave depth: closer to center → deeper waist between tips.
+  const c = R * 0.18;
   return (
     `M0 ${fmt(-R)}` +
-    `C${fmt(k)} ${fmt(-k)} ${fmt(k)} ${fmt(-k)} ${fmt(R)} 0` +
-    `C${fmt(k)} ${fmt(k)} ${fmt(k)} ${fmt(k)} 0 ${fmt(R)}` +
-    `C${fmt(-k)} ${fmt(k)} ${fmt(-k)} ${fmt(k)} ${fmt(-R)} 0` +
-    `C${fmt(-k)} ${fmt(-k)} ${fmt(-k)} ${fmt(-k)} 0 ${fmt(-R)}` +
+    `C${fmt(c)} ${fmt(-c)} ${fmt(c)} ${fmt(-c)} ${fmt(R)} 0` +
+    `C${fmt(c)} ${fmt(c)} ${fmt(c)} ${fmt(c)} 0 ${fmt(R)}` +
+    `C${fmt(-c)} ${fmt(c)} ${fmt(-c)} ${fmt(c)} ${fmt(-R)} 0` +
+    `C${fmt(-c)} ${fmt(-c)} ${fmt(-c)} ${fmt(-c)} 0 ${fmt(-R)}` +
     'Z'
   );
 }

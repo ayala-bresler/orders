@@ -30,6 +30,7 @@ import {
 } from './utils/sessionAuth.js';
 import { closeAllLiveConnections } from './utils/liveConnections.js';
 import { useInactivityTimeout } from './utils/useInactivityTimeout.js';
+import { useWizardHistory } from './utils/useWizardHistory.js';
 import { MOBILE_LAYOUT_MQ } from './utils/svgLiveUpdate.js';
 
 const STEPS = ['identify', 'product', 'details', 'editor'];
@@ -144,6 +145,8 @@ export default function App() {
     setAdmin(nextAdmin || { role: 'admin', displayName: 'מנהל מערכת' });
   }, []);
 
+  const historyResetRef = useRef(() => {});
+
   const endSession = useCallback(async (message = 'הסשן הסתיים. יש להתחבר מחדש.') => {
     closeAllLiveConnections();
     try {
@@ -152,6 +155,7 @@ export default function App() {
       clearSessionAuth();
     }
     clearPersistedUi();
+    historyResetRef.current();
     setSession(null);
     setActiveItem(null);
     setStep('identify');
@@ -159,6 +163,65 @@ export default function App() {
     setCancelDetailsOpen(false);
     setFlash(message);
   }, []);
+
+  const restoreWizardFromHistory = useCallback(
+    ({ step: nextStep, activeItemId }) => {
+      setLeaveDetailsOpen(false);
+      setCancelDetailsOpen(false);
+      setFlash('');
+
+      if (nextStep === 'identify') {
+        // Browser back to identity = leave the order flow (same as tab "הזדהות").
+        endSession('');
+        return;
+      }
+
+      if (!session) {
+        setStep('identify');
+        setActiveItem(null);
+        return;
+      }
+
+      let item = null;
+      if (activeItemId != null) {
+        item =
+          (session.items || []).find(
+            (i) => Number(i.order_item_id) === Number(activeItemId)
+          ) || null;
+      }
+
+      let resolved = nextStep;
+      if (
+        (resolved === 'details' || resolved === 'editor') &&
+        !item
+      ) {
+        resolved =
+          session.items && session.items.length > 0 ? 'resume' : 'product';
+      }
+      if (resolved === 'editor' && item && item.supports_verses === false) {
+        resolved = 'details';
+      }
+      if (resolved === 'resume' && !(session.items && session.items.length)) {
+        resolved = 'product';
+      }
+
+      setActiveItem(item);
+      if (item) {
+        setItemSupportsVerses(item.supports_verses !== false);
+      }
+      setDetailsMayPromptDelete(false);
+      setStep(resolved);
+    },
+    [session, endSession]
+  );
+
+  const { resetHistory } = useWizardHistory({
+    enabled: !storeBooting && Boolean(store || admin) && !restoring,
+    step,
+    activeItemId: activeItem?.order_item_id ?? null,
+    onRestore: restoreWizardFromHistory,
+  });
+  historyResetRef.current = resetHistory;
 
   const touchServerSession = useCallback(async ({ force = false } = {}) => {
     const now = Date.now();

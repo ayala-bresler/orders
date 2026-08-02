@@ -201,17 +201,21 @@ function createPathGuideSampler(guide) {
   const d = guide?.d;
 
   if (d) {
-    const props = new svgPathProperties(d);
-    return {
-      length: () => props.getTotalLength(),
-      at(dist) {
-        const p = props.getPointAtLength(dist);
-        const tan = props.getTangentAtLength(dist);
-        const [x, y] = apply(matrix, p.x, p.y);
-        const [tx, ty] = apply(matrix, p.x + tan.x, p.y + tan.y);
-        return { x, y, angle: Math.atan2(ty - y, tx - x) };
-      },
-    };
+    try {
+      const props = new svgPathProperties(d);
+      return {
+        length: () => props.getTotalLength(),
+        at(dist) {
+          const p = props.getPointAtLength(dist);
+          const tan = props.getTangentAtLength(dist);
+          const [x, y] = apply(matrix, p.x, p.y);
+          const [tx, ty] = apply(matrix, p.x + tan.x, p.y + tan.y);
+          return { x, y, angle: Math.atan2(ty - y, tx - x) };
+        },
+      };
+    } catch {
+      // Fall through to polyline sampler when path `d` is unusable.
+    }
   }
 
   return {
@@ -694,7 +698,9 @@ function exportParentDyForTextItems(font, items, pathById, templateMeta, fieldBy
   const primary = items.find((it) => it.kind === 'textPath');
   if (!primary) return null;
 
-  const pathId = primary.pathId.startsWith('#') ? primary.pathId.slice(1) : primary.pathId;
+  const rawId = primary.pathId == null ? '' : String(primary.pathId);
+  const pathId = rawId.startsWith('#') ? rawId.slice(1) : rawId;
+  if (!pathId) return null;
   const field =
     (fieldByHref && fieldByHref[`#${pathId}`]) ||
     FIELD_BY_HREF[`#${pathId}`];
@@ -730,9 +736,13 @@ function exportParentDyForTextItems(font, items, pathById, templateMeta, fieldBy
 }
 
 function layoutTextPathItem(font, item, pathGuide, outPolylines, outPaths) {
+  // Missing / blank verse → no glyphs (DXF must still succeed).
+  if (!String(item?.text || '').trim()) return;
+
   const sampler = createPathGuideSampler(pathGuide);
   const len = sampler.length();
-  const chars = charsForTextPath(item.text);
+  if (!(len > 0)) return;
+  const chars = charsForTextPath(String(item.text || '').trim());
   if (!chars.length) return;
 
   const letterSpacingEm = item.letterSpacingEm || 0;
@@ -764,12 +774,16 @@ function layoutTextItemToPaths(font, item, pathById) {
   const polylines = [];
   const paths = [];
 
+  if (!item || !String(item.text || '').trim()) return paths;
+
   if (item.kind === 'plain') {
     layoutPlainText(font, item.text, item.fontSize, item.matrix, polylines, paths);
     return paths;
   }
 
-  const pathId = item.pathId.startsWith('#') ? item.pathId.slice(1) : item.pathId;
+  const rawId = item.pathId == null ? '' : String(item.pathId);
+  const pathId = rawId.startsWith('#') ? rawId.slice(1) : rawId;
+  if (!pathId) return paths;
   const pathGuide = pathById[pathId];
   if (!hasUsablePathGuide(pathGuide)) return paths;
 
@@ -861,7 +875,10 @@ function textToOutlinePaths(texts, pathById) {
       continue;
     }
 
-    const pathId = item.pathId.startsWith('#') ? item.pathId.slice(1) : item.pathId;
+    if (!String(item.text || '').trim()) continue;
+    const rawId = item.pathId == null ? '' : String(item.pathId);
+    const pathId = rawId.startsWith('#') ? rawId.slice(1) : rawId;
+    if (!pathId) continue;
     const pathGuide = pathById[pathId];
     if (!hasUsablePathGuide(pathGuide)) continue;
 

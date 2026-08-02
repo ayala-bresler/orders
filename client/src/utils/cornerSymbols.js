@@ -6,7 +6,7 @@ export const CORNER_SYMBOLS_KEY = '__cornerSymbols';
 
 export const SYMBOL_TYPES = ['sparkle4', 'star5', 'diamond'];
 export const SYMBOL_TYPE_LABELS = {
-  sparkle4: 'כוכב 4 פינות מעוגל',
+  sparkle4: 'כוכב 4 פינות מעוגל קעור',
   star5: 'כוכב סטנדרטי',
   diamond: 'מעוין',
 };
@@ -18,8 +18,8 @@ export const SYMBOL_SIDES_LABELS = {
   left: 'L',
 };
 
-/** Soft ceiling only — prevents runaway SVG from accidental huge inputs. */
-export const SYMBOL_COUNT_MAX = 99;
+/** Soft ceiling only (runaway guard) — UI accepts free N up to this. */
+export const SYMBOL_COUNT_MAX = 999;
 
 /** @deprecated kept for HMR compatibility with older form builds */
 export const SYMBOL_COUNT_OPTIONS = [0, 1, 2, 3];
