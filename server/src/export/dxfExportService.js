@@ -3,7 +3,6 @@
 const fs = require('fs');
 const path = require('path');
 const { DOMParser } = require('@xmldom/xmldom');
-const Drawing = require('dxf-writer');
 const templateResolver = require('../services/templateResolver');
 const svgService = require('../services/svgService');
 const { mapPolyline } = require('./svgExtract');
@@ -12,6 +11,7 @@ const { readRootSvgMetrics } = require('./svgRootMetrics');
 const { splitSvgIntoQuarters, QUARTER_DEFS } = require('./svgQuarterSplit');
 const { buildZipStore } = require('./zipStore');
 const { STORAGE_DIR } = require('../services/orderService');
+const { buildR12Dxf, emptyR12Dxf } = require('./r12DxfWriter');
 
 /** Quarter id → numbered DXF filename (1 = top-right … 4 = bottom-left). */
 const QUARTER_DXF_NUMBER = {
@@ -88,18 +88,14 @@ function isFinitePoint(pt) {
   );
 }
 
-/** Empty but valid DXF when a quarter has no drawable geometry (e.g. all verses blank). */
+/** Empty but valid R12 DXF when a quarter has no drawable geometry. */
 function emptyDxfString() {
-  const draw = new Drawing();
-  draw.setUnits('Unitless');
-  draw.addLayer('geometry', Drawing.ACI.WHITE, 'CONTINUOUS');
-  draw.setActiveLayer('geometry');
-  return draw.toDxfString();
+  return emptyR12Dxf({ units: 4, layer: 'geometry' });
 }
 
 /**
- * Convert one quarter SVG (paths-only, origin at 0,0) → DXF string.
- * Succeeds even when the quarter has no paths (blank verses / empty geometry).
+ * Convert one quarter SVG (paths-only, origin at 0,0) → MagicMark-friendly R12 DXF.
+ * (Older AC1009 POLYLINE format — not AC1021/LWPOLYLINE from dxf-writer.)
  */
 function svgToDxf(preparedSvgString) {
   const warnings = [];
@@ -111,25 +107,22 @@ function svgToDxf(preparedSvgString) {
     const svgHeight = parseSvgHeight(preparedSvgString || '');
     const all = extractBakedPathPolylines(doc);
 
-    const draw = new Drawing();
-    draw.setUnits('Unitless');
-    draw.addLayer('geometry', Drawing.ACI.WHITE, 'CONTINUOUS');
-    draw.setActiveLayer('geometry');
-
-    let drawn = 0;
+    const polys = [];
     for (const line of all) {
       if (!line || line.length < 2) continue;
       const mapped = mapPolyline(line, EXPORT_SCALE, svgHeight).filter(isFinitePoint);
       if (mapped.length < 2) continue;
-      draw.drawPolyline(mapped, false);
-      drawn += 1;
+      polys.push({ points: mapped });
     }
 
-    if (!drawn) {
+    if (!polys.length) {
       warnings.push('רבע ללא גיאומטריה מצוירת (פסוקים ריקים או ללא קווים).');
     }
 
-    return { dxf: draw.toDxfString(), warnings };
+    return {
+      dxf: buildR12Dxf(polys, { units: 4, layer: 'geometry' }),
+      warnings,
+    };
   } catch (err) {
     warnings.push(
       `המרת רבע ל-DXF נכשלה: ${err && err.message ? err.message : err}`
