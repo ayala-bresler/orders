@@ -2343,6 +2343,33 @@ body {
   width: 32%;
   text-align: center;
 }
+.orders-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.orders-sort-btn:hover {
+  color: var(--accent);
+}
+.orders-sort-arrow {
+  display: inline-block;
+  font-size: 0.75em;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+.orders-sort-arrow.is-desc {
+  transform: rotate(180deg);
+}
 .my-customers-table th.col-actions,
 .my-customers-table td.col-actions {
   width: 12%;

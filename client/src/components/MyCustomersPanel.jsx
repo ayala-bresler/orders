@@ -1,15 +1,23 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { applySessionFromIdentifyResult } from '../utils/sessionAuth.js';
 import { deleteMyCustomer, fetchMyCustomers, selectMyCustomer } from '../storeApi.js';
 import ConfirmDialog from './ConfirmDialog.jsx';
 import { IconTrash } from './Icons.jsx';
-import { formatItemPlateDiameter } from '../utils/orderItemDisplay.js';
 
 function listModelLabel(customer) {
-  const name = String(customer.model_name || '').trim();
-  const plate = formatItemPlateDiameter(customer);
-  if (name && plate) return `${name} · ${plate}`;
-  return name || plate || '—';
+  return String(customer.model_name || '').trim() || '—';
+}
+
+/** Compare manual order numbers: numeric when both are digits, else locale text. */
+function compareOrderNumbers(a, b) {
+  const pa = String(a?.phone || '').trim();
+  const pb = String(b?.phone || '').trim();
+  const na = /^\d+$/.test(pa) ? Number(pa) : NaN;
+  const nb = /^\d+$/.test(pb) ? Number(pb) : NaN;
+  if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
+  if (Number.isFinite(na) && !Number.isFinite(nb)) return -1;
+  if (!Number.isFinite(na) && Number.isFinite(nb)) return 1;
+  return pa.localeCompare(pb, 'he', { numeric: true, sensitivity: 'base' });
 }
 
 /**
@@ -33,22 +41,34 @@ export default function MyCustomersPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('');
+  const [orderNumberDir, setOrderNumberDir] = useState('asc'); // asc | desc
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const tableWrapRef = useRef(null);
 
-  const filtered = customers.filter((c) => {
+  const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      String(c.full_name || '').toLowerCase().includes(q) ||
-      String(c.phone || '').includes(q) ||
-      String(c.model_name || '').toLowerCase().includes(q) ||
-      String(c.plate_diameter || '').includes(q) ||
-      String(c.order_id || '').includes(q)
-    );
-  });
+    const list = customers.filter((c) => {
+      if (!q) return true;
+      return (
+        String(c.full_name || '').toLowerCase().includes(q) ||
+        String(c.phone || '').includes(q) ||
+        String(c.model_name || '').toLowerCase().includes(q) ||
+        String(c.plate_diameter || '').includes(q) ||
+        String(c.order_id || '').includes(q)
+      );
+    });
+    const sorted = [...list].sort(compareOrderNumbers);
+    if (orderNumberDir === 'desc') sorted.reverse();
+    return sorted;
+  }, [customers, filter, orderNumberDir]);
+
+  const toggleOrderNumberSort = (e) => {
+    e?.stopPropagation?.();
+    e?.preventDefault?.();
+    setOrderNumberDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+  };
 
   const reload = async () => {
     setBusy(true);
@@ -191,7 +211,33 @@ export default function MyCustomersPanel({
                   <tr>
                     <th className="col-name">שם</th>
                     <th className="col-model">דגם</th>
-                    <th className="col-phone">מספר הזמנה</th>
+                    <th className="col-phone">
+                      <button
+                        type="button"
+                        className="orders-sort-btn"
+                        onClick={toggleOrderNumberSort}
+                        aria-label={
+                          orderNumberDir === 'asc'
+                            ? 'מיון מספר הזמנה בסדר עולה — לחץ לסדר יורד'
+                            : 'מיון מספר הזמנה בסדר יורד — לחץ לסדר עולה'
+                        }
+                        title={
+                          orderNumberDir === 'asc'
+                            ? 'סדר עולה — לחץ להיפוך'
+                            : 'סדר יורד — לחץ להיפוך'
+                        }
+                      >
+                        <span>מספר הזמנה</span>
+                        <span
+                          className={`orders-sort-arrow${
+                            orderNumberDir === 'desc' ? ' is-desc' : ''
+                          }`}
+                          aria-hidden="true"
+                        >
+                          ▲
+                        </span>
+                      </button>
+                    </th>
                     <th className="col-actions" aria-label="פעולות" />
                   </tr>
                 </thead>
