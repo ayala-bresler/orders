@@ -4,84 +4,62 @@ import MyCustomersPanel from './MyCustomersPanel.jsx';
 import AdminBrowsePanel from './AdminBrowsePanel.jsx';
 
 /**
- * Step 1 — phone-based login. Existing customers use the name from the DB.
- * New phone numbers trigger a confirmation popup before creating a record.
+ * Store home: orders list is the main surface; “הזמנה חדשה” opens a popup form.
+ * New orders are created immediately (no confirmation dialog).
  */
 export default function IdentifyStep({ onIdentified, isAdmin = false }) {
-  const [panelOpen, setPanelOpen] = useState(Boolean(isAdmin));
+  const [newOpen, setNewOpen] = useState(false);
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [pendingNew, setPendingNew] = useState(null);
 
-  const submit = async (e) => {
+  const openNew = () => {
+    setError('');
+    setFullName('');
+    setPhone('');
+    setNewOpen(true);
+  };
+
+  const closeNew = () => {
+    if (busy) return;
+    setNewOpen(false);
+    setError('');
+  };
+
+  const submitNew = async (e) => {
     e.preventDefault();
     const digits = String(phone || '').replace(/\D/g, '');
-    if (digits.length < 4) {
-      setError('נא להזין מספר טלפון תקין (לפחות 4 ספרות).');
+    if (digits.length < 1) {
+      setError('נא להזין מספר הזמנה ידני.');
+      return;
+    }
+    const trimmedName = fullName.trim();
+    if (!trimmedName) {
+      setError('נא להזין שם מלא.');
       return;
     }
     setBusy(true);
     setError('');
     try {
-      const result = await identifyCustomer({
-        phone,
-        email: email || undefined,
-      });
-      if (result.isNew && result.needsConfirmation) {
-        const trimmedName = fullName.trim();
-        if (!trimmedName) {
-          setError('נא להזין שם מלא ללקוח חדש.');
-          return;
-        }
-        setPendingNew({
-          phone: result.phone || phone,
-          email: email || '',
+      const lookedUp = await identifyCustomer({ phone: digits });
+      if (lookedUp.isNew && lookedUp.needsConfirmation) {
+        const created = await confirmNewCustomer({
+          phone: lookedUp.phone || digits,
           full_name: trimmedName,
         });
+        setNewOpen(false);
+        onIdentified(created);
         return;
       }
-      onIdentified(result);
+      setNewOpen(false);
+      onIdentified(lookedUp);
     } catch (err) {
       setError(err.message);
     } finally {
       setBusy(false);
     }
   };
-
-  const handleConfirmNew = async () => {
-    if (!pendingNew) return;
-    setBusy(true);
-    setError('');
-    try {
-      const result = await confirmNewCustomer({
-        phone: pendingNew.phone,
-        full_name: pendingNew.full_name,
-        email: pendingNew.email || email || undefined,
-      });
-      setPendingNew(null);
-      onIdentified(result);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const cancelNew = () => {
-    setPendingNew(null);
-    setError('');
-  };
-
-  const toggleLabel = isAdmin
-    ? panelOpen
-      ? 'סגור ניהול לקוחות/חנויות'
-      : 'ניהול לקוחות וחנויות'
-    : panelOpen
-      ? 'סגור רשימת לקוחות'
-      : 'כל הלקוחות שלי';
 
   return (
     <>
@@ -93,93 +71,77 @@ export default function IdentifyStep({ onIdentified, isAdmin = false }) {
         />
       </div>
 
-      <div className={`identify-workspace${panelOpen ? ' is-split' : ''}`}>
-        <div className="identify-toggle-bar">
-          <button
-            type="button"
-            className="btn my-customers-toggle"
-            onClick={() => setPanelOpen((v) => !v)}
-          >
-            {toggleLabel}
-          </button>
+      <div className="identify-home">
+        <button
+          type="button"
+          className="btn primary identify-new-cta"
+          onClick={openNew}
+        >
+          הזמנה חדשה
+        </button>
+
+        <div className="identify-orders-main">
+          {isAdmin ? (
+            <AdminBrowsePanel
+              open
+              onOpenChange={() => {}}
+              showToggle={false}
+              onSelected={onIdentified}
+            />
+          ) : (
+            <MyCustomersPanel
+              open
+              onOpenChange={() => {}}
+              showToggle={false}
+              variant="main"
+              onSelected={onIdentified}
+            />
+          )}
         </div>
+      </div>
 
-        <div className="identify-split-body">
-          {panelOpen ? (
-            <aside className="identify-search-pane">
-              {isAdmin ? (
-                <AdminBrowsePanel
-                  open={panelOpen}
-                  onOpenChange={setPanelOpen}
-                  showToggle={false}
-                  onSelected={onIdentified}
-                />
-              ) : (
-                <MyCustomersPanel
-                  open={panelOpen}
-                  onOpenChange={setPanelOpen}
-                  showToggle={false}
-                  onSelected={onIdentified}
-                />
-              )}
-            </aside>
-          ) : null}
-
-          <form className="card identify" onSubmit={submit}>
-            <h2>כניסה למערכת ההזמנות</h2>
-
+      {newOpen ? (
+        <div
+          className="confirm-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="new-order-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeNew();
+          }}
+        >
+          <form className="confirm-dialog card identify-new-dialog" onSubmit={submitNew}>
+            <h3 id="new-order-title">הזמנה חדשה</h3>
             <label className="field">
-              <span>שם מלא</span>
-              <input value={fullName} onChange={(e) => setFullName(e.target.value)} />
-            </label>
-            <label className="field">
-              <span>טלפון *</span>
+              <span>שם מלא *</span>
               <input
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                inputMode="tel"
-                placeholder="050-0000000"
-                minLength={4}
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                autoFocus
                 required
               />
             </label>
-            <label className="field">
-              <span>דוא"ל</span>
-              <input value={email} onChange={(e) => setEmail(e.target.value)} inputMode="email" />
+            <label className="field field-order-number">
+              <span>מספר הזמנה *</span>
+              <input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                inputMode="numeric"
+                required
+              />
             </label>
-
-            {error && !pendingNew && <div className="notice error inline">{error}</div>}
-
-            <div className="identify-actions">
-              <button className="btn primary identify-submit" type="submit" disabled={busy}>
-                {busy ? 'טוען…' : 'אישור'}
+            {error ? <div className="notice error inline">{error}</div> : null}
+            <div className="actions">
+              <button type="button" className="btn" onClick={closeNew} disabled={busy}>
+                ביטול
+              </button>
+              <button type="submit" className="btn primary" disabled={busy}>
+                {busy ? 'נכנס…' : 'המשך'}
               </button>
             </div>
           </form>
         </div>
-      </div>
-
-      {pendingNew && (
-        <div className="confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="new-customer-title">
-          <div className="confirm-dialog card">
-            <h3 id="new-customer-title">לקוח חדש</h3>
-            <p className="hint">
-              מספר הטלפון <strong dir="ltr">{pendingNew.phone}</strong> לא נמצא במערכת.
-              <br />
-              האם לאשר הוספת <strong>{pendingNew.full_name}</strong> כלקוח חדש?
-            </p>
-            {error && <div className="notice error inline">{error}</div>}
-            <div className="actions">
-              <button type="button" className="btn" onClick={cancelNew} disabled={busy}>
-                ביטול
-              </button>
-              <button type="button" className="btn primary" onClick={handleConfirmNew} disabled={busy}>
-                {busy ? 'שומר…' : 'אישור והמשך'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      ) : null}
     </>
   );
 }

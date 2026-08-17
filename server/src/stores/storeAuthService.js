@@ -270,15 +270,107 @@ async function clearAllStoreSmtpCredentials() {
   );
 }
 
+const OPEN_ORDER_STATUSES = ['draft', 'open'];
+
+/**
+ * Store “הזמנות” list: name, manual order # (phone), auto order_id, model name.
+ * Sorted by manual order number.
+ */
 async function listStoreCustomers(storeId) {
   const { rows } = await query(
-    `SELECT customer_id, full_name, phone, email, address, created_at
-       FROM customers
-      WHERE store_id = $1
-      ORDER BY full_name ASC, customer_id ASC`,
-    [Number(storeId)]
+    `SELECT c.customer_id,
+            c.full_name,
+            c.phone,
+            c.email,
+            c.address,
+            c.created_at,
+            o.order_id,
+            COALESCE(
+              NULLIF(BTRIM(m.model_name), ''),
+              CASE WHEN oi.has_crown THEN NULLIF(BTRIM(cm.model_name), '') END,
+              CASE WHEN oi.has_breastplate THEN NULLIF(BTRIM(bm.model_name), '') END,
+              CASE WHEN oi.has_pointer THEN NULLIF(BTRIM(pm.model_name), '') END
+            ) AS model_name,
+            oi.plate_diameter
+       FROM customers c
+       LEFT JOIN LATERAL (
+         SELECT ord.order_id
+           FROM orders ord
+          WHERE ord.customer_id = c.customer_id
+          ORDER BY
+            CASE WHEN ord.status = ANY($2) THEN 0 ELSE 1 END,
+            ord.order_date DESC,
+            ord.order_id DESC
+          LIMIT 1
+       ) o ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT oi.model,
+                oi.plate_diameter,
+                oi.has_crown, oi.crown_model,
+                oi.has_breastplate, oi.breastplate_model,
+                oi.has_pointer, oi.pointer_model
+           FROM order_items oi
+          WHERE oi.order_id = o.order_id
+          ORDER BY oi.item_id
+          LIMIT 1
+       ) oi ON TRUE
+       LEFT JOIN models m ON m.model_code = oi.model
+       LEFT JOIN models cm ON cm.model_code = oi.crown_model
+       LEFT JOIN models bm ON bm.model_code = oi.breastplate_model
+       LEFT JOIN models pm ON pm.model_code = oi.pointer_model
+      WHERE c.store_id = $1
+      ORDER BY
+        CASE
+          WHEN c.phone ~ '^[0-9]+$' THEN LPAD(c.phone, 32, '0')
+          ELSE c.phone
+        END ASC,
+        c.customer_id ASC`,
+    [Number(storeId), OPEN_ORDER_STATUSES]
   );
   return rows;
+}
+
+/** Permanently delete a store customer (and cascaded orders/items) + storage folders. */
+async function deleteStoreCustomer(storeId, customerId) {
+  const sid = Number(storeId);
+  const cid = Number(customerId);
+  if (!Number.isFinite(sid) || !Number.isFinite(cid)) {
+    const e = new Error('מזהה הזמנה שגוי.');
+    e.status = 400;
+    throw e;
+  }
+
+  const { rows: owned } = await query(
+    `SELECT customer_id FROM customers WHERE customer_id = $1 AND store_id = $2`,
+    [cid, sid]
+  );
+  if (!owned[0]) {
+    const e = new Error('ההזמנה לא נמצאה ברשימת החנות.');
+    e.status = 404;
+    throw e;
+  }
+
+  const { rows: orderRows } = await query(
+    `SELECT order_id FROM orders WHERE customer_id = $1`,
+    [cid]
+  );
+
+  const fs = require('fs');
+  const path = require('path');
+  const { STORAGE_DIR } = require('../services/orderService');
+  for (const row of orderRows) {
+    const orderDir = path.join(STORAGE_DIR, String(row.order_id));
+    if (fs.existsSync(orderDir)) {
+      fs.rmSync(orderDir, { recursive: true, force: true });
+    }
+  }
+
+  await query(`DELETE FROM customers WHERE customer_id = $1 AND store_id = $2`, [
+    cid,
+    sid,
+  ]);
+
+  return { deletedCustomerId: cid };
 }
 
 async function bindCustomerToStore(customerId, storeId) {
@@ -302,7 +394,7 @@ async function selectStoreCustomer(storeId, customerId) {
     [Number(customerId), Number(storeId)]
   );
   if (!rows[0]) {
-    const e = new Error('הלקוח לא נמצא ברשימת הלקוחות של החנות.');
+    const e = new Error('ההזמנה לא נמצאה ברשימת ההזמנות של החנות.');
     e.status = 404;
     throw e;
   }
@@ -321,6 +413,7 @@ module.exports = {
   updateStoreSmtp,
   clearAllStoreSmtpCredentials,
   listStoreCustomers,
+  deleteStoreCustomer,
   bindCustomerToStore,
   selectStoreCustomer,
   findStoreById,

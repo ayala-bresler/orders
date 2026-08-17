@@ -3,13 +3,17 @@
 /**
  * customerService
  * ---------------
- * Phone-based identification. Existing customers use the name from the DB.
- * New customers require explicit confirmation before insert.
+ * Identification by manual order number (stored in customers.phone).
+ * Existing records use the name from the DB.
+ * New numbers require explicit confirmation before insert.
  */
 
 const { query } = require('../db');
 
-/** Keep digits only so "050-123-4567" and "0501234567" match. */
+/**
+ * Normalize the manual order number (legacy column: customers.phone).
+ * Digits-only so spaced/punctuated entries still match.
+ */
 function normalizePhone(phone) {
   return String(phone || '').replace(/\D/g, '');
 }
@@ -53,6 +57,8 @@ async function getOrderItems(orderId) {
   const sql = `
     SELECT oi.item_id AS order_item_id, oi.product_code, oi.quantity,
             oi.model AS model_code,
+            oi.plate_diameter,
+            oi.size_code,
             COALESCE(oi.status, 'open') AS status,
             p.product_name, oi.customized_svg_path,
             m.model_name,
@@ -99,14 +105,14 @@ async function attachOrderContext(customer) {
 }
 
 /**
- * Look up a customer by phone. Does not create new records.
+ * Look up a customer by manual order number. Does not create new records.
  * @param {{ phone: string, email?: string, address?: string }} input
  */
 async function identify(input) {
   const phone = normalizePhone(input && input.phone);
 
-  if (phone.length < 4) {
-    const e = new Error('נא להזין מספר טלפון תקין (לפחות 4 ספרות).');
+  if (phone.length < 1) {
+    const e = new Error('נא להזין מספר הזמנה ידני.');
     e.status = 400;
     throw e;
   }
@@ -145,8 +151,8 @@ async function confirmNewCustomer(input) {
   const phone = normalizePhone(input && input.phone);
   const fullName = normalizeName(input && input.full_name);
 
-  if (phone.length < 4) {
-    const e = new Error('נא להזין מספר טלפון תקין (לפחות 4 ספרות).');
+  if (phone.length < 1) {
+    const e = new Error('נא להזין מספר הזמנה ידני.');
     e.status = 400;
     throw e;
   }
@@ -161,7 +167,7 @@ async function confirmNewCustomer(input) {
     [phone]
   );
   if (existingRows.length > 0) {
-    const e = new Error('מספר הטלפון כבר רשום במערכת.');
+    const e = new Error('מספר ההזמנה כבר רשום במערכת.');
     e.status = 409;
     throw e;
   }

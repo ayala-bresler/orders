@@ -1,11 +1,12 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import OrderItemSummary from './OrderItemSummary.jsx';
 import ConfirmDialog from './ConfirmDialog.jsx';
-import { mainModelName } from '../utils/orderItemDisplay.js';
+import { mainModelName, orderItemImageModelCode } from '../utils/orderItemDisplay.js';
 import { modelSkuPrefix } from '../utils/modelSku.js';
 import { modelImageUrl } from '../api.js';
 import { IconTrash } from './Icons.jsx';
 import OrderSentMarker from './OrderSentMarker.jsx';
+import { formatOrderRef } from '../utils/orderNumberDisplay.js';
 
 const GRID_GAP = 16;
 /** Cap so one product isn't huge; more products never exceed this. */
@@ -13,9 +14,10 @@ const MAX_CARD_SIZE = 360;
 const MIN_CARD_SIZE = 120;
 
 function itemImageSrc(item) {
+  const code = orderItemImageModelCode(item);
   const sku =
     item.short_sku
-    || modelSkuPrefix(item.model_code || item.model);
+    || modelSkuPrefix(code);
   return sku ? modelImageUrl(sku) : null;
 }
 
@@ -67,6 +69,7 @@ export default function ExistingOrderStep({
   order,
   items,
   customerName,
+  customerPhone,
   onContinueItem,
   onNewProduct,
   onDeleteItem,
@@ -122,7 +125,9 @@ export default function ExistingOrderStep({
   return (
     <div className="card resume">
       <div className="resume-header">
-        <h2 className="resume-title">ההזמנה שלך (#{order.order_id})</h2>
+        <h2 className="resume-title">
+          ההזמנה שלך ({formatOrderRef(order.order_id, customerPhone)})
+        </h2>
         {greeting ? (
           <p className="resume-greeting" aria-label={`שלום ${greeting}`}>
             היי {greeting}!

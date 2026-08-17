@@ -17,6 +17,7 @@ const {
   updateStoreEmail,
   publicStoreRow,
   listStoreCustomers,
+  deleteStoreCustomer,
   selectStoreCustomer,
 } = require('./storeAuthService');
 const {
@@ -153,11 +154,26 @@ router.get('/customers', requireStoreSession, async (req, res, next) => {
   }
 });
 
+router.delete('/customers/:customerId', requireStoreSession, async (req, res, next) => {
+  try {
+    const customerId = Number(req.params.customerId);
+    if (!Number.isFinite(customerId)) {
+      const e = new Error('חסר מזהה הזמנה.');
+      e.status = 400;
+      throw e;
+    }
+    const result = await deleteStoreCustomer(req.store.storeId, customerId);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/select-customer', requireStoreSession, async (req, res, next) => {
   try {
     const customerId = Number(req.body?.customerId || req.body?.customer_id);
     if (!Number.isFinite(customerId)) {
-      const e = new Error('חסר מזהה לקוח.');
+      const e = new Error('חסר מזהה הזמנה.');
       e.status = 400;
       throw e;
     }

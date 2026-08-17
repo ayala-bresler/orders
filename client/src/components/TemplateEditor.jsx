@@ -426,9 +426,9 @@ export default function TemplateEditor({
         emailRes.items || emailRes.remainingItems,
         { isResend: orderSent }
       );
+      // Keep button disabled until parent navigates home.
     } catch (err) {
       setError(err.message);
-    } finally {
       setExportingDxf(false);
     }
   };

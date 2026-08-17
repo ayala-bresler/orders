@@ -451,10 +451,99 @@ async function completeOrderHandler(req, res, next) {
     if (!valid) return res.status(400).json({ error: 'Invalid order/item id.' });
 
     const { exportOrderItemPdf } = require('../export/pdfExportService');
-    const pdfResult = await exportOrderItemPdf(orderId, itemId, {
-      getOrderItemDetails: orderService.getOrderItemDetails,
-      getOrderItemVerses: orderService.getOrderItemVerses,
+    const { sendPdfToAddress, getConfig } = require('../services/emailService');
+    const { sendStoreOrderPdfCopy } = require('../stores/storeSmtpService');
+    const { query } = require('../db');
+
+    const details = await orderService.getOrderItemDetails(orderId, itemId);
+    if (!details) {
+      const err = new Error('הפריט לא נמצא בהזמנה.');
+      err.status = 404;
+      throw err;
+    }
+
+    const meta = await orderService.getOrderItemMeta(orderId, itemId);
+    const { rows: modelRows } = await query(
+      `SELECT model_code, model_name FROM models`
+    );
+    const modelNameByCode = Object.fromEntries(
+      modelRows.map((row) => [row.model_code, row.model_name])
+    );
+    const item = details.item || {};
+    const isResend = String(item.status || '').toLowerCase() === 'completed';
+    const { mainModelName, formatAccessoryLine } = require('../utils/orderItemDisplay');
+    const modelName = mainModelName(
+      { ...item, model_name: meta?.model_name, product_name: meta?.product_name },
+      modelNameByCode
+    );
+    const accessoryLine = formatAccessoryLine(item, modelNameByCode);
+
+    let pdfResult = null;
+    let pdfWarning = null;
+    try {
+      pdfResult = await exportOrderItemPdf(orderId, itemId, {
+        getOrderItemDetails: orderService.getOrderItemDetails,
+        getOrderItemVerses: orderService.getOrderItemVerses,
+      });
+    } catch (pdfErr) {
+      pdfWarning = pdfErr.message;
+      console.warn('[pdf] export during complete failed:', pdfErr.message);
+    }
+
+    if (!pdfResult?.pdfBytes) {
+      const err = new Error(
+        pdfWarning
+          ? `לא ניתן ליצור דף הזמנה לשליחה: ${pdfWarning}`
+          : 'לא ניתן ליצור דף הזמנה לשליחה.'
+      );
+      err.status = 500;
+      throw err;
+    }
+
+    const pdfFilename = `order-${orderId}-item-${itemId}.pdf`;
+    const mailMeta = {
+      orderId,
+      customerName: details.customerName || null,
+      customerPhone: details.customerPhone || null,
+      modelName,
+      accessoryLine: accessoryLine || null,
+      isResend,
+    };
+
+    // Admin: order-form PDF only (no DXF, no verses page).
+    const cfg = getConfig();
+    if (!cfg.recipient) {
+      const err = new Error(
+        'לא הוגדר כתובת מייל למנהל המערכת. הוסיפו DXF_RECIPIENT_EMAIL בקובץ server/.env'
+      );
+      err.status = 503;
+      throw err;
+    }
+    const adminEmail = await sendPdfToAddress({
+      to: cfg.recipient,
+      pdfFiles: [{ filename: pdfFilename, content: pdfResult.pdfBytes }],
+      meta: mailMeta,
     });
+
+    // Store: same order-form PDF only.
+    let storeEmailResult = null;
+    try {
+      storeEmailResult = await sendStoreOrderPdfCopy({
+        storeId: req.store?.storeId || null,
+        pdfFiles: [{ filename: pdfFilename, content: pdfResult.pdfBytes }],
+        meta: {
+          ...mailMeta,
+          kind: 'store-order-copy',
+        },
+      });
+    } catch (storeMailErr) {
+      console.warn('[store-smtp] complete copy email failed:', storeMailErr.message);
+      storeEmailResult = {
+        skipped: true,
+        reason: 'send_failed',
+        error: storeMailErr.message,
+      };
+    }
 
     const completed = await orderService.completeOrderItem(orderId, itemId);
     try {
@@ -463,8 +552,26 @@ async function completeOrderHandler(req, res, next) {
       console.warn('[storage] post-complete cleanup failed:', cleanupErr.message);
     }
 
+    const warnings = [];
+    if (pdfWarning) warnings.push(`PDF: ${pdfWarning}`);
+    if (storeEmailResult?.skipped && storeEmailResult?.error) {
+      warnings.push(`מייל לחנות לא נשלח: ${storeEmailResult.error}`);
+    } else if (storeEmailResult?.skipped && storeEmailResult?.reason === 'smtp_incomplete') {
+      warnings.push('מייל לחנות לא נשלח: חסר אימייל חנות בהזדהות.');
+    } else if (storeEmailResult?.skipped && storeEmailResult?.reason === 'no_store') {
+      warnings.push('מייל לחנות לא נשלח: אין סשן חנות פעיל.');
+    } else if (storeEmailResult?.skipped && storeEmailResult?.reason === 'no_pdf') {
+      warnings.push('מייל לחנות לא נשלח: לא נוצר קובץ PDF.');
+    }
+
     res.json({
       ok: true,
+      sentTo: adminEmail.sentTo,
+      pdfAttached: true,
+      storeEmail: storeEmailResult,
+      storeOrderPdfAttached: true,
+      storeVersesPdfAttached: false,
+      storeAttachmentCount: storeEmailResult?.attachmentCount || 0,
       pdfFilePath: null,
       completedItemId: completed.completedItemId,
       deletedItemId: completed.deletedItemId,
@@ -473,8 +580,12 @@ async function completeOrderHandler(req, res, next) {
       remainingCount: completed.remainingCount,
       orderSubmitted: completed.orderSubmitted,
       status: completed.orderSubmitted ? 'submitted' : 'open',
+      warnings,
     });
   } catch (err) {
+    if (!err.status && err.message) {
+      err.message = `סיום הזמנה נכשל: ${err.message}`;
+    }
     next(err);
   }
 }

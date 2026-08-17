@@ -1,6 +1,18 @@
 import { formatModelLabel } from '../utils/modelSku.js';
+import {
+  isSpecialTextModel,
+  SPECIAL_MODEL_DISPLAY_NAME,
+} from '../utils/modelScopes.js';
 
-export default function ModelSelect({ models, value, onChange, ariaLabel, allowEmpty = false, className = '' }) {
+export default function ModelSelect({
+  models,
+  value,
+  onChange,
+  ariaLabel,
+  allowEmpty = false,
+  nameOnly = false,
+  className = '',
+}) {
   return (
     <select
       dir="rtl"
@@ -10,11 +22,18 @@ export default function ModelSelect({ models, value, onChange, ariaLabel, allowE
       aria-label={ariaLabel}
     >
       {allowEmpty && <option value="">—</option>}
-      {models.map((m) => (
-        <option key={m.model_code} value={m.model_code}>
-          {formatModelLabel(m.model_code, m.model_name)}
-        </option>
-      ))}
+      {models.map((m) => {
+        const label = nameOnly
+          ? (String(m.model_name || '').trim()
+            || (isSpecialTextModel(m.model_code) ? SPECIAL_MODEL_DISPLAY_NAME : '')
+            || m.model_code)
+          : formatModelLabel(m.model_code, m.model_name);
+        return (
+          <option key={m.model_code} value={m.model_code}>
+            {label}
+          </option>
+        );
+      })}
     </select>
   );
 }

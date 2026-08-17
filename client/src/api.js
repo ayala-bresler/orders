@@ -308,7 +308,7 @@ export async function exportOrderItemPdf(orderId, itemId) {
   return { blob };
 }
 
-/** Mark order complete and generate PDF. */
+/** Mark order complete, email order-form PDF (no DXF / verses), and return session. */
 export async function completeOrderItem(orderId, itemId) {
   return toJson(
     await apiFetch(`/api/orders/${orderId}/items/${itemId}/complete`, {

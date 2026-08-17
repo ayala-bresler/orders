@@ -37,6 +37,7 @@ const {
   isDetailsComplete,
   clampOrderNotes,
   assertSpecialModelNotes,
+  assertMainOrAccessory,
 } = require('../config/orderFields');
 const svgService = require('./svgService');
 const templateResolver = require('./templateResolver');
@@ -549,6 +550,19 @@ async function completeOrderItem(orderId, orderItemId) {
   if (!orderRows[0]) {
     const e = new Error('ההזמנה לא נמצאה או שאינה ניתנת לעריכה.');
     e.status = 404;
+    throw e;
+  }
+
+  const details = await getOrderItemDetails(orderIdNum, itemIdNum);
+  if (!details) {
+    const e = new Error('הפריט לא נמצא בהזמנה.');
+    e.status = 404;
+    throw e;
+  }
+  const accessoryErr = assertMainOrAccessory(details.item);
+  if (accessoryErr) {
+    const e = new Error(accessoryErr);
+    e.status = 400;
     throw e;
   }
 

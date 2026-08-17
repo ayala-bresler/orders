@@ -93,6 +93,26 @@ function assertSpecialModelNotes(order, item) {
   return 'נבחר דגם מיוחד — יש למלא הערות עם פרטי הבחירה.';
 }
 
+/** True when the main עץ חיים model code is set. */
+function hasMainModel(item) {
+  return Boolean(item?.model && String(item.model).trim());
+}
+
+/** Crown / טס / יד checkbox selected. */
+function hasAccessorySelection(item) {
+  return Boolean(item?.has_crown || item?.has_breastplate || item?.has_pointer);
+}
+
+/**
+ * Without a main עץ חיים model, at least one accessory (כתר / טס / יד) is required.
+ * @returns {string|null} Hebrew error message, or null when valid.
+ */
+function assertMainOrAccessory(item) {
+  if (hasMainModel(item)) return null;
+  if (hasAccessorySelection(item)) return null;
+  return 'יש לבחור דגם ראשי לעץ חיים, או לפחות כתר / טס / יד לפני סיום ההזמנה.';
+}
+
 module.exports = {
   ORDER_DETAIL_FIELDS,
   ITEM_DETAIL_FIELDS,
@@ -102,4 +122,7 @@ module.exports = {
   clampOrderNotes,
   isDetailsComplete,
   assertSpecialModelNotes,
+  hasMainModel,
+  hasAccessorySelection,
+  assertMainOrAccessory,
 };

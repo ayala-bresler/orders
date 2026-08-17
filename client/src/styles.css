@@ -2332,12 +2332,47 @@ body {
 }
 .my-customers-table th.col-name,
 .my-customers-table td.col-name {
-  width: 26%;
+  width: 28%;
+}
+.my-customers-table th.col-model,
+.my-customers-table td.col-model {
+  width: 28%;
 }
 .my-customers-table th.col-phone,
 .my-customers-table td.col-phone {
-  width: 42%;
+  width: 32%;
   text-align: center;
+}
+.my-customers-table th.col-actions,
+.my-customers-table td.col-actions {
+  width: 12%;
+  text-align: center;
+  padding-inline: 0.25rem;
+}
+.orders-row-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #c62828;
+  cursor: pointer;
+}
+.orders-row-delete:hover:not(:disabled) {
+  background: #ffebee;
+  color: #b71c1c;
+}
+.orders-row-delete:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.orders-row-delete svg {
+  width: 1.1rem;
+  height: 1.1rem;
 }
 .my-customers-table th.col-store,
 .my-customers-table td.col-store {
@@ -2517,6 +2552,7 @@ body {
   padding: 8px 24px 24px;
   background: var(--bg);
   box-sizing: border-box;
+  min-height: 0;
 }
 .main-identify .identify {
   width: 100%;
@@ -2542,6 +2578,93 @@ body {
   max-height: 120px;
 }
 
+.identify-home {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  flex: 0 0 auto;
+  min-height: 0;
+}
+.identify-new-cta {
+  align-self: center;
+  min-width: min(280px, 100%);
+  padding: 14px 28px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.identify-new-cta:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+.identify-orders-main {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  align-self: center;
+}
+.identify-orders-main .my-customers-panel,
+.identify-orders-main .admin-browse-panel {
+  width: 100%;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.identify-orders-main .my-customers-box,
+.identify-orders-main .my-customers-box--main {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  text-align: center;
+  height: auto;
+}
+.my-customers-box--main h3 {
+  font-size: 1.2rem;
+  margin-bottom: 10px;
+  text-align: center;
+}
+.my-customers-box--main .field {
+  text-align: start;
+}
+.my-customers-box--main .my-customers-table th,
+.my-customers-box--main .my-customers-table td {
+  text-align: center;
+}
+.my-customers-box--main .customer-name-hit {
+  text-align: center;
+}
+.identify-orders-main .my-customers-table-wrap,
+.my-customers-box--main .my-customers-table-wrap {
+  flex: 0 0 auto;
+  height: auto;
+  max-height: none;
+  min-height: 0;
+  overflow: visible;
+  width: 100%;
+}
+.identify-new-dialog {
+  width: min(420px, 94vw);
+}
+.identify-new-dialog .field {
+  margin-bottom: 12px;
+}
+.identify-new-dialog .field-order-number input {
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Legacy split layout (unused on store home; kept for admin embedding safety) */
 .identify-workspace {
   width: 100%;
   max-width: 460px;
@@ -2564,7 +2687,6 @@ body {
   gap: 16px;
   width: 100%;
 }
-/* RTL: first child (search) sits on the right; login on the left */
 .identify-workspace.is-split .identify-split-body {
   flex-direction: row;
   align-items: flex-start;
@@ -2600,6 +2722,9 @@ body {
   .identify-workspace.is-split .identify {
     width: 100%;
     flex: 1 1 auto;
+  }
+  .identify-home {
+    max-width: 100%;
   }
 }
 
@@ -3139,6 +3264,10 @@ html:has(.main-details) body {
     margin-inline: 0;
     min-height: 0;
     direction: rtl;
+  }
+
+  .details-bottom-split--notes-only {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .details-parochet-section,

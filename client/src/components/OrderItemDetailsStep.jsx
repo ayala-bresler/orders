@@ -96,6 +96,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
   const [savedItem, setSavedItem] = useState({});
   const [saveAcknowledged, setSaveAcknowledged] = useState(false);
   const [supportsVerses, setSupportsVerses] = useState(true);
+  const [finishing, setFinishing] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -287,6 +288,13 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
   const productModels = useMemo(() => productSelectableModels(models), [models]);
   const crownModels = useMemo(() => crownSelectableModels(models), [models]);
 
+  const hasMainModelSelected = Boolean(
+    resolveModelCode(fieldValue(item, 'model'), models)
+    || String(item?.model || '').trim()
+  );
+  // No main עץ חיים model → finish here (no verses page).
+  const continueToVerses = hasMainModelSelected && versesSupported;
+
   useEffect(() => {
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
@@ -331,21 +339,56 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
 
   const handleSaveAndContinue = async () => {
     try {
+      const payloadPreview = normalizeItemForSave({
+        ...item,
+        quantity: item.quantity === '' || item.quantity == null ? 1 : item.quantity,
+        price_at_purchase: item.price_at_purchase === '' || item.price_at_purchase == null ? 0 : item.price_at_purchase,
+      });
+      const mainCode = resolveModelCode(payloadPreview.model, models) || String(payloadPreview.model || '').trim();
+      if (!mainCode) {
+        const hasAccessory = Boolean(
+          payloadPreview.has_crown || payloadPreview.has_breastplate || payloadPreview.has_pointer
+        );
+        if (!hasAccessory) {
+          setError('יש לבחור דגם ראשי לעץ חיים, או לפחות כתר / טס / יד לפני סיום ההזמנה.');
+          return null;
+        }
+      }
+
+      const willFinishHere = !(Boolean(mainCode) && versesSupported);
+      if (willFinishHere) setFinishing(true);
+
       const result = await persist();
       const nextItem = result?.item || item;
-      if (versesSupported) {
+      const nextMain = resolveModelCode(nextItem.model, models) || String(nextItem.model || '').trim();
+      const sizeSupportsVerses = result?.supportsVerses !== false;
+      const goVerses = Boolean(nextMain) && sizeSupportsVerses;
+
+      if (goVerses) {
+        setFinishing(false);
         onContinueToVerses?.(templateKeyForItem(nextItem));
-      } else {
-        // Allow finishing again (resend path for items without verses).
+        return result;
+      }
+
+      try {
         const completed = await completeOrderItem(orderId, itemId);
+        if (completed.warnings && completed.warnings.length) {
+          const unique = [...new Set(completed.warnings.filter(Boolean))];
+          window.alert(unique.join('\n'));
+        }
         onFinishWithoutVerses?.(
           completed.completedItemId ?? completed.deletedItemId ?? itemId,
           completed.items || completed.remainingItems,
           { isResend: orderSent }
         );
+      } catch (err) {
+        setFinishing(false);
+        setError(err.message || 'סיום ההזמנה נכשל.');
+        return null;
       }
       return result;
     } catch {
+      setFinishing(false);
       /* error shown */
       return null;
     }
@@ -361,7 +404,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
     saveAndContinue: handleSaveAndContinue,
     skipToVerses: handleSkipToVerses,
     getTemplateKey: () => templateKeyForItem(item),
-  }), [isDirty, item, order, versesSupported, models, productSizes]);
+  }), [isDirty, item, order, versesSupported, models, productSizes, continueToVerses]);
 
   if (status === 'loading') return <div className="notice">טוען פרטי הזמנה…</div>;
   if (status === 'error') return <div className="notice error">שגיאה: {error}</div>;
@@ -374,6 +417,13 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
   })();
 
   const hasStones = item.has_stones === true;
+  const detailsTitle = (() => {
+    if (hasMainModelSelected) return 'פרטי עץ חיים';
+    if (item.has_crown) return 'פרטי כתר';
+    if (item.has_breastplate) return 'פרטי טס';
+    if (item.has_pointer) return 'פרטי יד';
+    return 'פרטי הזמנה';
+  })();
 
   return (
     <div className={`card details-step${orderSent ? ' details-step--sent' : ''}`}>
@@ -384,7 +434,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
         </>
       ) : null}
       <header className="details-page-banner" aria-label="כותרת">
-        <h2 className="details-page-title">פרטי עץ חיים</h2>
+        <h2 className="details-page-title">{detailsTitle}</h2>
       </header>
       <form
         className="details-sheet"
@@ -404,6 +454,8 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
                       value={mainModelCode}
                       onChange={(code) => changeItem('model', code)}
                       ariaLabel="דגם"
+                      allowEmpty
+                      nameOnly
                     />
                   </InlineField>
                 </div>
@@ -537,25 +589,27 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
               </div>
             </div>
 
-            <div className="details-bottom-split">
-              <section className="details-parochet-section" aria-label="פרוכת">
-                <h3 className="details-section-banner">פרוכת</h3>
-                <div className="details-section-body">
-                  <div className="details-parochet-height">
-                    <InlineField label="גובה:" compact>
-                      <input
-                        dir="ltr"
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        value={fieldValue(item, 'parochet_height')}
-                        onChange={(e) => changeItem('parochet_height', e.target.value)}
-                      />
-                    </InlineField>
+            <div className={`details-bottom-split${!hasMainModelSelected ? ' details-bottom-split--notes-only' : ''}`}>
+              {hasMainModelSelected ? (
+                <section className="details-parochet-section" aria-label="פרוכת">
+                  <h3 className="details-section-banner">פרוכת</h3>
+                  <div className="details-section-body">
+                    <div className="details-parochet-height">
+                      <InlineField label="גובה:" compact>
+                        <input
+                          dir="ltr"
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={fieldValue(item, 'parochet_height')}
+                          onChange={(e) => changeItem('parochet_height', e.target.value)}
+                        />
+                      </InlineField>
+                    </div>
+                    <EtzChaimMeasuresDiagram />
                   </div>
-                  <EtzChaimMeasuresDiagram />
-                </div>
-              </section>
+                </section>
+              ) : null}
 
               <section className="details-notes-section" aria-label="הערות">
                 <h3 className="details-section-banner">הערות</h3>
@@ -574,7 +628,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
 
           {error && <div className="notice error inline">{error}</div>}
 
-          {!versesSupported && versesUnavailableReason && (
+          {!continueToVerses && hasMainModelSelected && versesUnavailableReason && (
             <p className="details-verses-unavailable" role="status">
               {versesUnavailableReason === 'size_no_verses'
                 ? 'מידה זו אינה כוללת עריכת פסוקים — ניתן לסיים את ההזמנה לאחר שמירת הפרטים.'
@@ -589,7 +643,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
               type="button"
               className="btn btn-icon-only details-nav-back"
               onClick={onCancel}
-              disabled={saving}
+              disabled={saving || finishing}
               aria-label="חזרה"
               title="חזרה"
             >
@@ -599,12 +653,12 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
           <button
             type="submit"
             className="btn primary btn-with-icon details-nav-continue"
-            disabled={saving}
+            disabled={saving || finishing}
           >
             <span>
-              {saving
-                ? 'שומר…'
-                : versesSupported
+              {saving || finishing
+                ? 'מסיים…'
+                : continueToVerses
                   ? 'שמירה והמשך'
                   : 'סיום הזמנה'}
             </span>

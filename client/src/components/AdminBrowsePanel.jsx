@@ -6,10 +6,18 @@ import {
   fetchAdminStores,
   selectAdminCustomer,
 } from '../adminApi.js';
+import { formatItemPlateDiameter } from '../utils/orderItemDisplay.js';
+
+function listModelLabel(customer) {
+  const name = String(customer.model_name || '').trim();
+  const plate = formatItemPlateDiameter(customer);
+  if (name && plate) return `${name} · ${plate}`;
+  return name || plate || '—';
+}
 
 /**
- * Admin browse: toggle חנויות / לקוחות.
- * Selecting a store filters to that store's customers.
+ * Admin browse: toggle חנויות / הזמנות.
+ * Selecting a store filters to that store's orders.
  */
 export default function AdminBrowsePanel({
   onSelected,
@@ -130,7 +138,9 @@ export default function AdminBrowsePanel({
     return (
       String(c.full_name || '').toLowerCase().includes(q) ||
       String(c.phone || '').includes(q) ||
-      String(c.email || '').toLowerCase().includes(q) ||
+      String(c.model_name || '').toLowerCase().includes(q) ||
+      String(c.plate_diameter || '').includes(q) ||
+      String(c.order_id || '').includes(q) ||
       String(c.store_name || '').toLowerCase().includes(q)
     );
   });
@@ -149,7 +159,7 @@ export default function AdminBrowsePanel({
           className="btn my-customers-toggle"
           onClick={() => setOpen((v) => !v)}
         >
-          {open ? 'סגור ניהול לקוחות/חנויות' : 'ניהול לקוחות וחנויות'}
+          {open ? 'סגור ניהול הזמנות/חנויות' : 'ניהול הזמנות וחנויות'}
         </button>
       ) : null}
 
@@ -167,7 +177,7 @@ export default function AdminBrowsePanel({
                 setCreateNotice('');
               }}
             >
-              לקוחות
+              הזמנות
             </button>
             <button
               type="button"
@@ -232,9 +242,9 @@ export default function AdminBrowsePanel({
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder={
-                mode === 'stores' ? 'חיפוש שם חנות' : 'חיפוש שם/טלפון/חנות'
+                mode === 'stores' ? 'חיפוש שם חנות' : 'שם / מספר הזמנה / דגם / חנות'
               }
-              aria-label={mode === 'stores' ? 'חיפוש שם חנות' : 'חיפוש שם/טלפון/חנות'}
+              aria-label={mode === 'stores' ? 'חיפוש שם חנות' : 'חיפוש הזמנות'}
             />
           </label>
 
@@ -267,14 +277,15 @@ export default function AdminBrowsePanel({
               </ul>
             )
           ) : filteredCustomers.length === 0 ? (
-            <p className="hint">אין לקוחות להצגה.</p>
+            <p className="hint">אין הזמנות להצגה.</p>
           ) : (
             <div className="my-customers-table-wrap">
               <table className="my-customers-table">
                 <thead>
                   <tr>
                     <th className="col-name">שם</th>
-                    <th className="col-phone">טלפון</th>
+                    <th className="col-model">דגם</th>
+                    <th className="col-phone">מספר הזמנה</th>
                     {!selectedStoreId ? <th className="col-store">חנות</th> : null}
                   </tr>
                 </thead>
@@ -298,6 +309,7 @@ export default function AdminBrowsePanel({
                           {c.full_name}
                         </button>
                       </td>
+                      <td className="col-model">{listModelLabel(c)}</td>
                       <td className="col-phone" dir="ltr">
                         {c.phone}
                       </td>

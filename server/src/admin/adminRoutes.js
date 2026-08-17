@@ -194,11 +194,46 @@ router.get('/customers', requireAdminSession, async (req, res, next) => {
               c.address,
               c.store_id,
               c.created_at,
-              s.store_name
+              s.store_name,
+              o.order_id,
+              COALESCE(
+                NULLIF(BTRIM(m.model_name), ''),
+                CASE WHEN oi.has_crown THEN NULLIF(BTRIM(cm.model_name), '') END,
+                CASE WHEN oi.has_breastplate THEN NULLIF(BTRIM(bm.model_name), '') END,
+                CASE WHEN oi.has_pointer THEN NULLIF(BTRIM(pm.model_name), '') END
+              ) AS model_name,
+              oi.plate_diameter
          FROM customers c
          LEFT JOIN stores s ON s.store_id = c.store_id
+         LEFT JOIN LATERAL (
+           SELECT ord.order_id
+             FROM orders ord
+            WHERE ord.customer_id = c.customer_id
+            ORDER BY ord.order_date DESC, ord.order_id DESC
+            LIMIT 1
+         ) o ON TRUE
+         LEFT JOIN LATERAL (
+           SELECT oi.model,
+                  oi.plate_diameter,
+                  oi.has_crown, oi.crown_model,
+                  oi.has_breastplate, oi.breastplate_model,
+                  oi.has_pointer, oi.pointer_model
+             FROM order_items oi
+            WHERE oi.order_id = o.order_id
+            ORDER BY oi.item_id
+            LIMIT 1
+         ) oi ON TRUE
+         LEFT JOIN models m ON m.model_code = oi.model
+         LEFT JOIN models cm ON cm.model_code = oi.crown_model
+         LEFT JOIN models bm ON bm.model_code = oi.breastplate_model
+         LEFT JOIN models pm ON pm.model_code = oi.pointer_model
          ${where}
-        ORDER BY c.full_name ASC, c.customer_id ASC`,
+        ORDER BY
+          CASE
+            WHEN c.phone ~ '^[0-9]+$' THEN LPAD(c.phone, 32, '0')
+            ELSE c.phone
+          END ASC,
+          c.customer_id ASC`,
       params
     );
     res.json({
@@ -211,6 +246,9 @@ router.get('/customers', requireAdminSession, async (req, res, next) => {
         store_id: r.store_id,
         store_name: r.store_name || null,
         created_at: r.created_at,
+        order_id: r.order_id || null,
+        model_name: r.model_name || null,
+        plate_diameter: r.plate_diameter != null ? Number(r.plate_diameter) : null,
       })),
     });
   } catch (err) {

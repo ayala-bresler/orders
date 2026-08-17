@@ -108,6 +108,7 @@ function modelNameOnly(modelCode, modelNameByCode) {
 
 function buildPdfPayload({ customerName, order, item, values, modelNameByCode }) {
   const resolveModelName = (code) => modelNameOnly(code, modelNameByCode);
+  const hasMainModel = Boolean(String(item?.model || '').trim());
 
   const stonesParts = [];
   if (item.stones_color) stonesParts.push(item.stones_color);
@@ -122,10 +123,11 @@ function buildPdfPayload({ customerName, order, item, values, modelNameByCode })
   const payload = {
     customerName: customerName || '',
     model: resolveModelName(item.model),
+    // Plate diameter applies to עץ חיים and to כתר-only (and other accessory) orders.
     plateDiameter: fmtNum(item.plate_diameter),
-    parchmentDiameter: fmtNum(item.parchment_diameter),
+    parchmentDiameter: hasMainModel ? fmtNum(item.parchment_diameter) : '',
     stones: stonesParts.join(' '),
-    parchmentHeight: fmtNum(item.parchment_height),
+    parchmentHeight: hasMainModel ? fmtNum(item.parchment_height) : '',
     crown: item.has_crown ? resolveModelName(item.crown_model || item.model) : '',
     crownCheck: Boolean(item.has_crown),
     breastplate: item.has_breastplate ? resolveModelName(item.breastplate_model || item.model) : '',
@@ -134,16 +136,16 @@ function buildPdfPayload({ customerName, order, item, values, modelNameByCode })
     pointerCheck: Boolean(item.has_pointer),
     deliveryDate: fmtDate(order.estimated_delivery_date),
     orderDate: fmtDate(order.order_date),
-    parochetHeight: fmtNum(item.parochet_height),
+    parochetHeight: hasMainModel ? fmtNum(item.parochet_height) : '',
     verses: {},
     notes: notesLines,
   };
 
+  // No עץ חיים → leave verse fields empty (no template defaults).
   for (const corner of CORNER_KEYS) {
-    payload.verses[corner] = [
-      verseLine(values, corner, 0),
-      verseLine(values, corner, 1),
-    ];
+    payload.verses[corner] = hasMainModel
+      ? [verseLine(values, corner, 0), verseLine(values, corner, 1)]
+      : ['', ''];
   }
 
   return payload;
@@ -223,10 +225,19 @@ async function exportOrderItemPdf(orderId, itemId, deps = {}) {
     throw err;
   }
 
-  const versesRow = await getVerses(orderId, itemId);
+  // Order-form PDF must work without verses (no עץ חיים / size that skips verses).
   const defaults = svgService.getDefaults();
-  const saved = versesRow?.values || {};
-  const values = { ...defaults, ...saved };
+  let values = { ...defaults };
+  try {
+    const versesRow = await getVerses(orderId, itemId);
+    const saved = versesRow?.values || {};
+    values = { ...defaults, ...saved };
+  } catch (err) {
+    const msg = String(err && err.message ? err.message : err);
+    if (!/אינה תומכת בעריכת פסוקים/.test(msg)) {
+      throw err;
+    }
+  }
 
   const modelCodes = new Set();
   const { rows: modelRows } = await query(`SELECT model_code, model_name FROM models`);

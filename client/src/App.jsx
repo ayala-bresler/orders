@@ -32,6 +32,7 @@ import { closeAllLiveConnections } from './utils/liveConnections.js';
 import { useInactivityTimeout } from './utils/useInactivityTimeout.js';
 import { useWizardHistory } from './utils/useWizardHistory.js';
 import { MOBILE_LAYOUT_MQ } from './utils/svgLiveUpdate.js';
+import { formatOrderHeading } from './utils/orderNumberDisplay.js';
 
 const STEPS = ['identify', 'product', 'details', 'editor'];
 
@@ -300,6 +301,11 @@ export default function App() {
         if (nextStep === 'details' || nextStep === 'editor') {
           if (!item) {
             nextStep = result.items?.length ? 'resume' : 'product';
+          } else if (
+            nextStep === 'editor'
+            && !String(item.model_code || item.model || '').trim()
+          ) {
+            nextStep = 'details';
           } else if (nextStep === 'editor' && item.supports_verses === false) {
             nextStep = 'details';
           }
@@ -354,6 +360,12 @@ export default function App() {
       setEditorTemplateKey(
         `${data.item?.plate_diameter ?? ''}:${data.item?.size_code ?? ''}`
       );
+      const hasMainModel = Boolean(String(data.item?.model || item.model_code || item.model || '').trim());
+      // No עץ חיים main model → always reopen on details (not verses).
+      if (!hasMainModel) {
+        setStep('details');
+        return;
+      }
       // Sent items without verses: show details with “ההזמנה נשלחה”.
       if (!supports) {
         setStep('details');
@@ -727,8 +739,9 @@ export default function App() {
                 <div className="site-header-copy">
                   <div className="session-info">
                     <span className="session-greeting">היי {session.customer.full_name}!</span>
-                    <span className="session-phone">{session.customer.phone}</span>
-                    <span className="session-order">הזמנה #{session.order.order_id}</span>
+                    <span className="session-order">
+                      {formatOrderHeading(session.order.order_id, session.customer.phone)}
+                    </span>
                   </div>
                 </div>
               ) : null}
@@ -846,6 +859,7 @@ export default function App() {
             order={session.order}
             items={session.items}
             customerName={session.customer?.full_name}
+            customerPhone={session.customer?.phone}
             onContinueItem={handleContinueExisting}
             onNewProduct={() => {
               setStep('product');

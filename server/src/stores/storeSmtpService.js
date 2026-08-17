@@ -1,12 +1,12 @@
 'use strict';
 
 /**
- * Send order PDFs to the store mailbox via system SMTP.
- * Store receives two files when available:
- *   1) order-form PDF (filled table)
- *   2) verses-print PDF (plate layout)
+ * Send order PDF(s) to the store mailbox via system SMTP.
+ * Typical cases:
+ *   - With verses: order-form PDF + verses-print PDF
+ *   - Without עץ חיים / no DXF path: order-form PDF only
  * Stores only need store_email — no per-store HOST/PORT/password.
- * Admin DXF mail is separate and does not use this path.
+ * Admin mail is separate and does not use this path.
  */
 
 const { findStoreById } = require('./storeAuthService');

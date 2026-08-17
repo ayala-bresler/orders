@@ -72,6 +72,12 @@ export async function fetchMyCustomers() {
   return storeFetch('/api/stores/customers');
 }
 
+export async function deleteMyCustomer(customerId) {
+  return storeFetch(`/api/stores/customers/${customerId}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function selectMyCustomer(customerId) {
   return storeFetch('/api/stores/select-customer', {
     method: 'POST',
