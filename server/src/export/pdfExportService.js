@@ -2,11 +2,12 @@
 
 const fs = require('fs');
 const path = require('path');
-const { PDFDocument } = require('pdf-lib');
+const { PDFDocument, TextAlignment } = require('pdf-lib');
 const fontkit = require('@pdf-lib/fontkit');
 const { query } = require('../db');
 const { resolveModelCode } = require('../utils/modelSku');
 const { formatHebrewDate } = require('../utils/dates');
+const { detectTextDir, preparePdfAppearanceText } = require('../utils/textDirection');
 const svgService = require('../services/svgService');
 
 const TEMPLATE_PATH =
@@ -70,12 +71,55 @@ function fmtDate(val, opts) {
   return formatHebrewDate(val, opts);
 }
 
-function setText(form, fieldName, value, font) {
+function applyFieldDirection(field, text, forceDir) {
+  const dir = forceDir || detectTextDir(text);
+  try {
+    field.setAlignment(dir === 'ltr' ? TextAlignment.Left : TextAlignment.Right);
+  } catch {
+    /* alignment unsupported */
+  }
+  return dir;
+}
+
+function setText(form, fieldName, value, font, { forceDir } = {}) {
   if (!fieldName) return;
   const text = value == null ? '' : String(value);
   try {
     const field = form.getTextField(fieldName);
-    field.setText(text);
+    applyFieldDirection(field, text, forceDir);
+    // pdf-lib has no BiDi: paint visual order so Hebrew / mixed / numbers read correctly.
+    field.setText(preparePdfAppearanceText(text, { forceDir }));
+    if (font) field.updateAppearances(font);
+  } catch {
+    /* field missing in template */
+  }
+}
+
+/** Truncate a single-line notes value so it fits the AcroForm widget at `fontSize`. */
+function fitTextToFieldWidth(text, font, fontSize, maxWidth) {
+  const raw = String(text || '');
+  if (!raw || !font || !(maxWidth > 0)) return raw;
+  if (font.widthOfTextAtSize(raw, fontSize) <= maxWidth) return raw;
+  let out = '';
+  for (const ch of Array.from(raw)) {
+    const next = out + ch;
+    if (font.widthOfTextAtSize(next, fontSize) > maxWidth) break;
+    out = next;
+  }
+  return out;
+}
+
+function setNotesLine(form, fieldName, value, font, fontSize = 12) {
+  if (!fieldName) return;
+  try {
+    const field = form.getTextField(fieldName);
+    const widget = field.acroField.getWidgets()[0];
+    const width = widget ? widget.getRectangle().width : 0;
+    // Match client clamp margin (~12pt) so exported PDF never shows clipped glyphs.
+    const maxWidth = Math.max(0, width - 12);
+    const fitted = fitTextToFieldWidth(value, font, fontSize, maxWidth);
+    applyFieldDirection(field, fitted);
+    field.setText(preparePdfAppearanceText(fitted));
     if (font) field.updateAppearances(font);
   } catch {
     /* field missing in template */
@@ -172,10 +216,10 @@ async function fillOrderPdf(payload) {
 
   setText(form, PDF_FIELD_MAP.customerName, payload.customerName, hebrewFont);
   setText(form, PDF_FIELD_MAP.model, payload.model, hebrewFont);
-  setText(form, PDF_FIELD_MAP.plateDiameter, payload.plateDiameter, hebrewFont);
-  setText(form, PDF_FIELD_MAP.parchmentDiameter, payload.parchmentDiameter, hebrewFont);
+  setText(form, PDF_FIELD_MAP.plateDiameter, payload.plateDiameter, hebrewFont, { forceDir: 'ltr' });
+  setText(form, PDF_FIELD_MAP.parchmentDiameter, payload.parchmentDiameter, hebrewFont, { forceDir: 'ltr' });
   setText(form, PDF_FIELD_MAP.stones, payload.stones, hebrewFont);
-  setText(form, PDF_FIELD_MAP.parchmentHeight, payload.parchmentHeight, hebrewFont);
+  setText(form, PDF_FIELD_MAP.parchmentHeight, payload.parchmentHeight, hebrewFont, { forceDir: 'ltr' });
   setText(form, PDF_FIELD_MAP.crown, payload.crown, hebrewFont);
   setCheck(form, PDF_FIELD_MAP.crownCheck, payload.crownCheck);
   setText(form, PDF_FIELD_MAP.breastplate, payload.breastplate, hebrewFont);
@@ -184,7 +228,7 @@ async function fillOrderPdf(payload) {
   setCheck(form, PDF_FIELD_MAP.pointerCheck, payload.pointerCheck);
   setText(form, PDF_FIELD_MAP.deliveryDate, payload.deliveryDate, hebrewFont);
   setText(form, PDF_FIELD_MAP.orderDate, payload.orderDate, hebrewFont);
-  setText(form, PDF_FIELD_MAP.parochetHeight, payload.parochetHeight, hebrewFont);
+  setText(form, PDF_FIELD_MAP.parochetHeight, payload.parochetHeight, hebrewFont, { forceDir: 'ltr' });
 
   for (const corner of CORNER_KEYS) {
     const fieldNames = PDF_FIELD_MAP.verses[corner];
@@ -195,7 +239,7 @@ async function fillOrderPdf(payload) {
   payload.notes.forEach((line, idx) => {
     const fieldName = PDF_FIELD_MAP.notes[idx];
     if (!fieldName) return;
-    setText(form, fieldName, line || '', hebrewFont);
+    setNotesLine(form, fieldName, line || '', hebrewFont, 12);
   });
 
   form.flatten();

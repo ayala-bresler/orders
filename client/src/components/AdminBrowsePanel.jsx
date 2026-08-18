@@ -7,6 +7,8 @@ import {
   selectAdminCustomer,
 } from '../adminApi.js';
 import { formatItemPlateDiameter } from '../utils/orderItemDisplay.js';
+import { detectTextDir } from '../utils/textDirection.js';
+import BidiText from './BidiText.jsx';
 
 function listModelLabel(customer) {
   const name = String(customer.model_name || '').trim();
@@ -211,6 +213,8 @@ export default function AdminBrowsePanel({
               <label className="field">
                 <span>שם חנות חדשה</span>
                 <input
+                  className="bidi-input"
+                  dir={detectTextDir(newStoreName)}
                   value={newStoreName}
                   onChange={(e) => setNewStoreName(e.target.value)}
                   placeholder="שם החנות"
@@ -221,6 +225,8 @@ export default function AdminBrowsePanel({
               <label className="field">
                 <span>סיסמה זמנית</span>
                 <input
+                  className="bidi-ltr"
+                  dir="ltr"
                   type="text"
                   value={newStorePassword}
                   onChange={(e) => setNewStorePassword(e.target.value)}
@@ -239,6 +245,8 @@ export default function AdminBrowsePanel({
 
           <label className="field">
             <input
+              className="bidi-input"
+              dir={detectTextDir(filter)}
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder={
@@ -267,7 +275,9 @@ export default function AdminBrowsePanel({
                       disabled={busy}
                       onClick={() => pickStore(s)}
                     >
-                      {s.storeName}
+                      <BidiText as="span" value={s.storeName}>
+                        {s.storeName}
+                      </BidiText>
                       {!s.activated ? (
                         <span className="admin-store-pending"> · ממתין להפעלה</span>
                       ) : null}
@@ -306,15 +316,25 @@ export default function AdminBrowsePanel({
                             pickCustomer(c);
                           }}
                         >
-                          {c.full_name}
+                          <BidiText as="span" value={c.full_name}>
+                            {c.full_name}
+                          </BidiText>
                         </button>
                       </td>
-                      <td className="col-model">{listModelLabel(c)}</td>
-                      <td className="col-phone" dir="ltr">
+                      <td className="col-model">
+                        <BidiText as="span" value={listModelLabel(c)}>
+                          {listModelLabel(c)}
+                        </BidiText>
+                      </td>
+                      <td className="col-phone bidi-ltr" dir="ltr">
                         {c.phone}
                       </td>
                       {!selectedStoreId ? (
-                        <td className="col-store">{c.store_name || '—'}</td>
+                        <td className="col-store">
+                          <BidiText as="span" value={c.store_name || '—'}>
+                            {c.store_name || '—'}
+                          </BidiText>
+                        </td>
                       ) : null}
                     </tr>
                   ))}

@@ -41,6 +41,7 @@ const {
 } = require('../config/orderFields');
 const svgService = require('./svgService');
 const templateResolver = require('./templateResolver');
+const { isCrownOnlyPlateSize } = require('../utils/productSizeDisplay');
 const { formatModelLabel } = require('../utils/modelSku');
 const { toDateOnlyString, formatHebrewDate } = require('../utils/dates');
 
@@ -354,6 +355,10 @@ function normalizeItemForSave(item) {
     out.price_at_purchase = 0;
   } else {
     out.price_at_purchase = Number(out.price_at_purchase);
+  }
+  // Size 16: crown only — never persist a main עץ חיים model.
+  if (out.model && isCrownOnlyPlateSize(out)) {
+    out.model = null;
   }
   return out;
 }

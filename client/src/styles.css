@@ -39,6 +39,56 @@ body {
   color: var(--ink);
 }
 
+/*
+ * Bidirectional text (Hebrew UI):
+ * - Free-text controls use first-strong / plaintext so Hebrew is RTL and
+ *   English / numbers stay LTR without reversing mixed runs.
+ * - Dedicated LTR controls (number, email, password, date) stay left-to-right.
+ */
+.bidi-input,
+.bidi-text,
+.app textarea,
+.app input:not([type]),
+.app input[type="text"],
+.app input[type="search"],
+.app input[type="tel"],
+.app input[type="url"] {
+  unicode-bidi: plaintext;
+}
+
+.app input[type="number"],
+.app input[type="email"],
+.app input[type="password"],
+.app input[type="date"],
+.app input[type="time"],
+.app input[type="datetime-local"],
+.bidi-ltr {
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: start;
+}
+
+@media print {
+  .bidi-input,
+  .bidi-text,
+  .app textarea,
+  .app input:not([type]),
+  .app input[type="text"],
+  .app input[type="search"],
+  .app input[type="tel"],
+  .app input[type="url"] {
+    unicode-bidi: plaintext;
+  }
+
+  .bidi-ltr,
+  .app input[type="number"],
+  .app input[type="email"],
+  .app input[type="password"] {
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+}
+
 .app-header {
   padding: 18px 28px;
   background: var(--panel);
@@ -3584,6 +3634,8 @@ html:has(.main-details) body {
   line-height: 22px;
   resize: none;
   overflow-y: auto;
+  /* Numbers / English run LTR; Hebrew lines stay RTL (bidi plaintext). */
+  unicode-bidi: plaintext;
 }
 
 .numbered-notes-input:focus {
@@ -3770,6 +3822,17 @@ html:has(.main-details) body {
 
 .details-verses-unavailable {
   margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 12%, #fff);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  color: #6b5340;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.details-size16-note {
+  margin: -4px 0 12px;
   padding: 10px 14px;
   border-radius: 10px;
   background: color-mix(in srgb, var(--accent) 12%, #fff);

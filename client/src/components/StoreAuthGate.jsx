@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { activateStore, enterStore, saveStoreEmail } from '../storeApi.js';
 import { loginAdmin } from '../adminApi.js';
+import { detectTextDir } from '../utils/textDirection.js';
 
 /**
  * Store gate: name + password first.
@@ -135,6 +136,8 @@ export default function StoreAuthGate({ onAuthenticated, onAdminAuthenticated, i
           <label className="field">
             <span>שם החנות</span>
             <input
+              className="bidi-input"
+              dir={detectTextDir(storeName)}
               value={storeName}
               onChange={(e) => setStoreName(e.target.value)}
               autoComplete="username"
@@ -145,6 +148,8 @@ export default function StoreAuthGate({ onAuthenticated, onAdminAuthenticated, i
           <label className="field">
             <span>סיסמה</span>
             <input
+              className="bidi-ltr"
+              dir="ltr"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -173,12 +178,20 @@ export default function StoreAuthGate({ onAuthenticated, onAdminAuthenticated, i
 
           <label className="field">
             <span>שם החנות</span>
-            <input value={storeName} readOnly disabled />
+            <input
+              className="bidi-input"
+              dir={detectTextDir(storeName)}
+              value={storeName}
+              readOnly
+              disabled
+            />
           </label>
 
           <label className="field">
             <span>סיסמה חדשה לחנות</span>
             <input
+              className="bidi-ltr"
+              dir="ltr"
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
@@ -191,6 +204,8 @@ export default function StoreAuthGate({ onAuthenticated, onAdminAuthenticated, i
           <label className="field">
             <span>אימות סיסמה</span>
             <input
+              className="bidi-ltr"
+              dir="ltr"
               type="password"
               value={newPassword2}
               onChange={(e) => setNewPassword2(e.target.value)}
@@ -203,6 +218,8 @@ export default function StoreAuthGate({ onAuthenticated, onAdminAuthenticated, i
           <label className="field">
             <span>אימייל החנות</span>
             <input
+              className="bidi-ltr"
+              dir="ltr"
               type="email"
               value={storeEmail}
               onChange={(e) => setStoreEmail(e.target.value)}
@@ -245,6 +262,8 @@ export default function StoreAuthGate({ onAuthenticated, onAdminAuthenticated, i
           <label className="field">
             <span>אימייל החנות</span>
             <input
+              className="bidi-ltr"
+              dir="ltr"
               type="email"
               value={storeEmail}
               onChange={(e) => setStoreEmail(e.target.value)}

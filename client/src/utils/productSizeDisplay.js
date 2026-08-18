@@ -1,6 +1,10 @@
 /** Default plate diameter when none is selected (size 12). */
 export const DEFAULT_PLATE_DIAMETER = 12;
 
+/** Size 16 supports crown only — no עץ חיים main model. */
+export const SIZE_16_ETZ_CHAIM_CLEARED_NOTE =
+  'במידה 16 קיים רק כתר, עץ חיים יש עד 15';
+
 /** Numeric plate diameter shown to the user (e.g. 9, 7.5). */
 export function plateDiameterNumber(size) {
   if (!size) return null;
@@ -13,6 +17,17 @@ export function plateDiameterNumber(size) {
 
   const fromName = String(size.size_name || '').match(/([\d.]+)/);
   return fromName ? Number(fromName[1]) : null;
+}
+
+/** True when plate size is 16 (crown-only; no main עץ חיים). */
+export function isCrownOnlyPlateSize(sizeOrItem) {
+  if (!sizeOrItem) return false;
+  const code = String(sizeOrItem.size_code || '').trim();
+  if (code === '16') return true;
+  const n = plateDiameterNumber(sizeOrItem);
+  if (n != null && Math.abs(n - 16) < 0.001) return true;
+  const plate = Number(sizeOrItem.plate_diameter);
+  return Number.isFinite(plate) && Math.abs(plate - 16) < 0.001;
 }
 
 export function findSizeByPlateDiameter(sizes, plateDiameter) {

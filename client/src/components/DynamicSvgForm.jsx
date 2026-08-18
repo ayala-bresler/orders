@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { normalizeVerseText } from '../utils/verseText.js';
+import { detectTextDir } from '../utils/textDirection.js';
 import {
   groupDiscoveredFields,
   orderGroupsForCornerGrid,
@@ -201,6 +202,7 @@ function VerseFieldInput({
   const customFont = Math.abs(fontPx - basePx) > 0.01;
   const customSpacing = Math.abs(style.letterSpacingEm) > 0.0001;
   const placeholder = defaults?.[field.key] || field.defaultText || '';
+  const fieldValue = values[field.key] ?? '';
 
   const ringLabel = ringDisplayLabel(field.ring);
 
@@ -211,11 +213,12 @@ function VerseFieldInput({
       ) : null}
       <textarea
         id={`field-${field.key}`}
-        dir="rtl"
+        dir={detectTextDir(fieldValue)}
+        className="bidi-input"
         rows={2}
         wrap="soft"
         maxLength={maxVerseLength}
-        value={values[field.key] ?? ''}
+        value={fieldValue}
         placeholder={placeholder}
         aria-label={field.label || field.key}
         onChange={(e) => onChange(field.key, normalizeVerseText(e.target.value))}

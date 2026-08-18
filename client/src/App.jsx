@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import IdentifyStep from './components/IdentifyStep.jsx';
 import ExistingOrderStep from './components/ExistingOrderStep.jsx';
 import ProductPicker from './components/ProductPicker.jsx';
@@ -33,6 +33,7 @@ import { useInactivityTimeout } from './utils/useInactivityTimeout.js';
 import { useWizardHistory } from './utils/useWizardHistory.js';
 import { MOBILE_LAYOUT_MQ } from './utils/svgLiveUpdate.js';
 import { formatOrderHeading } from './utils/orderNumberDisplay.js';
+import BidiText from './components/BidiText.jsx';
 
 const STEPS = ['identify', 'product', 'details', 'editor'];
 
@@ -738,8 +739,14 @@ export default function App() {
               {showCustomerInHeader ? (
                 <div className="site-header-copy">
                   <div className="session-info">
-                    <span className="session-greeting">היי {session.customer.full_name}!</span>
-                    <span className="session-order">
+                    <span className="session-greeting">
+                      היי{' '}
+                      <BidiText as="span" value={session.customer.full_name}>
+                        {session.customer.full_name}
+                      </BidiText>
+                      !
+                    </span>
+                    <span className="session-order bidi-ltr" dir="ltr">
                       {formatOrderHeading(session.order.order_id, session.customer.phone)}
                     </span>
                   </div>

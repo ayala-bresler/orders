@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { applySessionFromIdentifyResult } from '../utils/sessionAuth.js';
 import { deleteMyCustomer, fetchMyCustomers, selectMyCustomer } from '../storeApi.js';
+import { detectTextDir } from '../utils/textDirection.js';
 import ConfirmDialog from './ConfirmDialog.jsx';
+import BidiText from './BidiText.jsx';
 import { IconTrash } from './Icons.jsx';
 
 function listModelLabel(customer) {
@@ -194,6 +196,8 @@ export default function MyCustomersPanel({
           <label className="field">
             <span>חיפוש</span>
             <input
+              className="bidi-input"
+              dir={detectTextDir(filter)}
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder="שם / מספר הזמנה / דגם"
@@ -258,11 +262,17 @@ export default function MyCustomersPanel({
                             pick(c);
                           }}
                         >
+                        <BidiText as="span" value={c.full_name}>
                           {c.full_name}
-                        </button>
+                        </BidiText>
+                      </button>
                       </td>
-                      <td className="col-model">{listModelLabel(c)}</td>
-                      <td className="col-phone" dir="ltr">
+                      <td className="col-model">
+                        <BidiText as="span" value={listModelLabel(c)}>
+                          {listModelLabel(c)}
+                        </BidiText>
+                      </td>
+                      <td className="col-phone bidi-ltr" dir="ltr">
                         {c.phone}
                       </td>
                       <td className="col-actions">

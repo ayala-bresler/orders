@@ -12,6 +12,7 @@ export default function ModelSelect({
   allowEmpty = false,
   nameOnly = false,
   className = '',
+  disabled = false,
 }) {
   return (
     <select
@@ -20,6 +21,7 @@ export default function ModelSelect({
       value={value || ''}
       onChange={(e) => onChange(e.target.value || null)}
       aria-label={ariaLabel}
+      disabled={disabled}
     >
       {allowEmpty && <option value="">—</option>}
       {models.map((m) => {

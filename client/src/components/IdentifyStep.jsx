@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { confirmNewCustomer, identifyCustomer } from '../api.js';
+import { detectTextDir } from '../utils/textDirection.js';
 import MyCustomersPanel from './MyCustomersPanel.jsx';
 import AdminBrowsePanel from './AdminBrowsePanel.jsx';
 
@@ -115,6 +116,8 @@ export default function IdentifyStep({ onIdentified, isAdmin = false }) {
             <label className="field">
               <span>שם מלא *</span>
               <input
+                className="bidi-input"
+                dir={detectTextDir(fullName)}
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 autoFocus
@@ -124,6 +127,8 @@ export default function IdentifyStep({ onIdentified, isAdmin = false }) {
             <label className="field field-order-number">
               <span>מספר הזמנה *</span>
               <input
+                className="bidi-ltr"
+                dir="ltr"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 inputMode="numeric"

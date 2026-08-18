@@ -1,7 +1,8 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import { fetchOrderItemDetails, fetchModels, fetchProductSizes, saveOrderItemDetails, completeOrderItem } from '../api.js';
-import { plateDiameterNumber, findSizeByPlateDiameter, formatPlateDiameterLabel, syncItemSizeFields, resolveProductSizeRow, DEFAULT_PLATE_DIAMETER } from '../utils/productSizeDisplay.js';
+import { plateDiameterNumber, findSizeByPlateDiameter, formatPlateDiameterLabel, syncItemSizeFields, resolveProductSizeRow, DEFAULT_PLATE_DIAMETER, isCrownOnlyPlateSize, SIZE_16_ETZ_CHAIM_CLEARED_NOTE } from '../utils/productSizeDisplay.js';
 import { clampOrderNotes } from '../utils/orderNotes.js';
+import { detectTextDir } from '../utils/textDirection.js';
 import { resolveModelCode } from '../utils/modelSku.js';
 import {
   isCrownOnlyModel,
@@ -97,6 +98,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
   const [saveAcknowledged, setSaveAcknowledged] = useState(false);
   const [supportsVerses, setSupportsVerses] = useState(true);
   const [finishing, setFinishing] = useState(false);
+  const [size16ClearedModelNotice, setSize16ClearedModelNotice] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -104,6 +106,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
       try {
         setStatus('loading');
         setError('');
+        setSize16ClearedModelNotice(false);
         const [data, modelsData, sizesData] = await Promise.all([
           fetchOrderItemDetails(orderId, itemId),
           fetchModels(),
@@ -215,12 +218,22 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
       rawValue === '' || !Number.isFinite(diameter)
         ? null
         : findSizeByPlateDiameter(productSizes, diameter);
+    const nextSize = picked || { size_code: null, plate_diameter: diameter };
+    const selectingSize16 = isCrownOnlyPlateSize({
+      ...nextSize,
+      plate_diameter: diameter,
+      size_code: picked?.size_code,
+    });
+    const hadMainModel = Boolean(String(item.model || '').trim());
+    const shouldClearMainModel = selectingSize16 && hadMainModel;
 
     setSaveAcknowledged(false);
+    setSize16ClearedModelNotice(shouldClearMainModel);
     setItem((i) => ({
       ...i,
       plate_diameter: rawValue === '' ? null : diameter,
       size_code: picked?.size_code ?? null,
+      ...(shouldClearMainModel ? { model: null } : {}),
     }));
   };
 
@@ -251,6 +264,10 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
     // Crown-only (09) must never be saved as the main product דגם.
     // Special text model (10 / מיוחד) is allowed everywhere.
     if (out.model && isCrownOnlyModel(out.model)) {
+      out.model = null;
+    }
+    // Size 16: crown only — no עץ חיים main model.
+    if (out.model && isCrownOnlyPlateSize(out)) {
       out.model = null;
     }
     for (const key of ['crown_model', 'breastplate_model', 'pointer_model']) {
@@ -415,6 +432,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
     if (pd != null && pd !== '') return String(pd);
     return String(DEFAULT_PLATE_DIAMETER);
   })();
+  const size16Selected = isCrownOnlyPlateSize(item);
 
   const hasStones = item.has_stones === true;
   const detailsTitle = (() => {
@@ -452,10 +470,14 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
                     <ModelSelect
                       models={productModels}
                       value={mainModelCode}
-                      onChange={(code) => changeItem('model', code)}
+                      onChange={(code) => {
+                        if (size16Selected) return;
+                        changeItem('model', code);
+                      }}
                       ariaLabel="דגם"
                       allowEmpty
                       nameOnly
+                      disabled={size16Selected}
                     />
                   </InlineField>
                 </div>
@@ -479,6 +501,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
                     ) : (
                       <input
                         dir="ltr"
+                        className="bidi-ltr"
                         type="number"
                         min="0"
                         step="0.1"
@@ -488,11 +511,17 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
                     )}
                   </InlineField>
                 </div>
+                {size16ClearedModelNotice ? (
+                  <p className="details-size16-note" role="status">
+                    {SIZE_16_ETZ_CHAIM_CLEARED_NOTE}
+                  </p>
+                ) : null}
 
                 <div className="details-row">
                   <InlineField label="קוטר קלף:">
                     <input
                       dir="ltr"
+                      className="bidi-ltr"
                       type="number"
                       min="0"
                       step="0.1"
@@ -506,6 +535,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
                   <InlineField label="גובה קלף:">
                     <input
                       dir="ltr"
+                      className="bidi-ltr"
                       type="number"
                       min="0"
                       step="0.1"
@@ -563,7 +593,8 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
                     </label>
                     {hasStones ? (
                       <input
-                        dir="rtl"
+                        className="bidi-input"
+                        dir={detectTextDir(fieldValue(item, 'stones_color'))}
                         type="text"
                         value={fieldValue(item, 'stones_color')}
                         onChange={(e) => changeItem('stones_color', e.target.value)}
@@ -598,6 +629,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
                       <InlineField label="גובה:" compact>
                         <input
                           dir="ltr"
+                          className="bidi-ltr"
                           type="number"
                           min="0"
                           step="0.1"

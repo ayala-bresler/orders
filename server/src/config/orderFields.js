@@ -38,10 +38,40 @@ const ITEM_KEYS = ITEM_DETAIL_FIELDS.map((f) => f.key);
 
 const MAX_ORDER_NOTE_LINES = 6;
 
+/** Usable width (pt) of each notes field in order-form.pdf at 12pt NotoSansHebrew. */
+const MAX_ORDER_NOTE_LINE_WIDTH = 250;
+
+/** Approximate glyph advances for NotoSansHebrew @ 12pt (matches PDF export). */
+function charAdvance(ch) {
+  const cp = ch.codePointAt(0);
+  if (cp === 0x20) return 3.24;
+  if (cp >= 0x30 && cp <= 0x39) return 6.84;
+  if (cp >= 0x0590 && cp <= 0x05ff) return 6.16;
+  if (cp >= 0x41 && cp <= 0x5a) return 7.16;
+  if (cp >= 0x61 && cp <= 0x7a) return 5.8;
+  if (cp < 0x80) return 3.5;
+  return 6.5;
+}
+
+function clampOrderNoteLine(line, maxWidth = MAX_ORDER_NOTE_LINE_WIDTH) {
+  const raw = String(line ?? '');
+  let width = 0;
+  let out = '';
+  for (const ch of Array.from(raw)) {
+    const adv = charAdvance(ch);
+    if (width + adv > maxWidth) break;
+    width += adv;
+    out += ch;
+  }
+  return out;
+}
+
 function clampOrderNotes(value, maxLines = MAX_ORDER_NOTE_LINES) {
-  const lines = String(value ?? '').split('\n');
-  if (lines.length <= maxLines) return String(value ?? '');
-  return lines.slice(0, maxLines).join('\n');
+  const lines = String(value ?? '')
+    .split('\n')
+    .slice(0, maxLines)
+    .map((line) => clampOrderNoteLine(line));
+  return lines.join('\n');
 }
 
 function hasItemManufacturingData(item) {
@@ -119,6 +149,8 @@ module.exports = {
   ORDER_KEYS,
   ITEM_KEYS,
   MAX_ORDER_NOTE_LINES,
+  MAX_ORDER_NOTE_LINE_WIDTH,
+  clampOrderNoteLine,
   clampOrderNotes,
   isDetailsComplete,
   assertSpecialModelNotes,

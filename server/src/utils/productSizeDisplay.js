@@ -17,6 +17,17 @@ function plateDiameterNumber(size) {
   return fromName ? Number(fromName[1]) : null;
 }
 
+/** True when plate size is 16 (crown-only; no main עץ חיים). */
+function isCrownOnlyPlateSize(sizeOrItem) {
+  if (!sizeOrItem) return false;
+  const code = String(sizeOrItem.size_code || '').trim();
+  if (code === '16') return true;
+  const n = plateDiameterNumber(sizeOrItem);
+  if (n != null && Math.abs(n - 16) < 0.001) return true;
+  const plate = Number(sizeOrItem.plate_diameter);
+  return Number.isFinite(plate) && Math.abs(plate - 16) < 0.001;
+}
+
 function findSizeByPlateDiameter(sizes, plateDiameter) {
   const target = Number(plateDiameter);
   if (!Number.isFinite(target) || target <= 0) return null;
@@ -58,4 +69,5 @@ module.exports = {
   plateDiameterNumber,
   findSizeByPlateDiameter,
   resolveProductSizeRow,
+  isCrownOnlyPlateSize,
 };

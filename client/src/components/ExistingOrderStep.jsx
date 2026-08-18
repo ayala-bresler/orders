@@ -7,6 +7,7 @@ import { modelImageUrl } from '../api.js';
 import { IconTrash } from './Icons.jsx';
 import OrderSentMarker from './OrderSentMarker.jsx';
 import { formatOrderRef } from '../utils/orderNumberDisplay.js';
+import BidiText from './BidiText.jsx';
 
 const GRID_GAP = 16;
 /** Cap so one product isn't huge; more products never exceed this. */
@@ -126,11 +127,19 @@ export default function ExistingOrderStep({
     <div className="card resume">
       <div className="resume-header">
         <h2 className="resume-title">
-          ההזמנה שלך ({formatOrderRef(order.order_id, customerPhone)})
+          ההזמנה שלך (
+          <span className="bidi-ltr" dir="ltr">
+            {formatOrderRef(order.order_id, customerPhone)}
+          </span>
+          )
         </h2>
         {greeting ? (
           <p className="resume-greeting" aria-label={`שלום ${greeting}`}>
-            היי {greeting}!
+            היי{' '}
+            <BidiText as="span" value={greeting}>
+              {greeting}
+            </BidiText>
+            !
           </p>
         ) : null}
       </div>

@@ -9,6 +9,7 @@ const { pathGuidePoints, hasUsablePathGuide } = require('./svgExtract');
 const { TEMPLATE, SVG_OUTER_RX, SVG_INNER_RX, MEDALLION_CENTERS } = require('./templateRegistry');
 const { FIELD_BY_HREF } = require('../config/template');
 const { pathToPolylines, transformPolylines } = require('./pathUtils');
+const { detectTextDir, visualOrderChars } = require('../utils/textDirection');
 
 const _fontCache = new Map();
 
@@ -495,14 +496,15 @@ function resolveOffset(startOffset, pathLen) {
 }
 
 function isRtlText(text) {
-  return /[\u0590-\u05FF\uFB1D-\uFB4F]/.test(String(text || ''));
+  return detectTextDir(text) === 'rtl';
 }
 
-/** Hebrew/RTL on textPath: logical order must run opposite to path tangent stepping. */
+/**
+ * Glyph sequence for textPath placement (path tangent steps LTR).
+ * RTL paragraphs use visual order so English / numbers are not reversed.
+ */
 function charsForTextPath(text) {
-  const chars = [...String(text || '')];
-  if (isRtlText(text)) chars.reverse();
-  return chars;
+  return visualOrderChars(text);
 }
 
 function verseTextMidpointDist(pathGuide, font, text, fontSize, startOffset, textAnchor, letterSpacingEm = 0) {
@@ -833,15 +835,10 @@ function layoutPlainText(font, text, fontSize, matrix, outPolylines, outPaths) {
   const [advX, advY] = apply(matrix, 1, 0);
   const scaleX = Math.hypot(advX - originX, advY - originY) || 1;
   const scaledSize = fontSize * scaleX;
-  const rtl = isRtlText(text);
+  const chars = visualOrderChars(text);
 
-  let ox = rtl ? measureTextWidth(font, text, scaledSize) : 0;
-
-  for (const ch of text) {
-    if (rtl) {
-      const g = font.charToGlyph(ch);
-      if (g) ox -= (g.advanceWidth * scaledSize) / font.unitsPerEm;
-    }
+  let ox = 0;
+  for (const ch of chars) {
     const glyphLines = glyphToPolylines(font, ch, scaledSize);
     for (const gl of glyphLines) {
       outPolylines.push(gl.map(([px, py]) => apply(matrix, ox + px, py)));
@@ -851,7 +848,7 @@ function layoutPlainText(font, text, fontSize, matrix, outPolylines, outPaths) {
       const d = transformPathWithMatrix(g.getPath(0, 0, scaledSize), matrix, ox);
       if (d) outPaths.push(d);
     }
-    if (!rtl && g) {
+    if (g) {
       ox += (g.advanceWidth * scaledSize) / font.unitsPerEm;
     }
   }

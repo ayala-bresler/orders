@@ -1,15 +1,17 @@
 import { useEffect, useRef } from 'react';
+import { detectTextDir } from '../utils/textDirection.js';
 
 export default function AutoGrowTextarea({
   value,
   onChange,
   className = '',
-  dir = 'rtl',
+  dir,
   placeholder = '',
   id,
   name,
 }) {
   const ref = useRef(null);
+  const resolvedDir = dir || detectTextDir(value);
 
   useEffect(() => {
     const el = ref.current;
@@ -23,9 +25,9 @@ export default function AutoGrowTextarea({
       ref={ref}
       id={id}
       name={name}
-      dir={dir}
+      dir={resolvedDir}
       rows={1}
-      className={className}
+      className={['bidi-input', className].filter(Boolean).join(' ')}
       value={value}
       placeholder={placeholder}
       onChange={onChange}

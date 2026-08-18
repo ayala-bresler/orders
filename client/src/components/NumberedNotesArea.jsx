@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { clampOrderNotes, MAX_ORDER_NOTE_LINES } from '../utils/orderNotes.js';
+import { detectTextDir } from '../utils/textDirection.js';
 
 function splitLines(value, maxLines) {
   const lines = String(value || '').split('\n');
@@ -64,8 +65,8 @@ export default function NumberedNotesArea({
         ))}
       </div>
       <textarea
-        dir="rtl"
-        className="numbered-notes-input"
+        dir={detectTextDir(value)}
+        className="numbered-notes-input bidi-input"
         value={value}
         placeholder={placeholder}
         onChange={handleChange}
@@ -74,7 +75,7 @@ export default function NumberedNotesArea({
         rows={maxLines}
         required={required}
         aria-required={required || undefined}
-        aria-label={`הערות, עד ${maxLines} שורות`}
+        aria-label={`הערות, עד ${maxLines} שורות באורך שמתאים לטופס ההזמנה`}
       />
     </div>
   );
