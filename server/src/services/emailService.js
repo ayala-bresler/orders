@@ -191,9 +191,34 @@ function smtpTimeoutError(err) {
   return e;
 }
 
-/** Body text omitted — attachments alone are enough. */
-function buildEmailText(_meta = {}) {
-  return '';
+/** Plain-text body for order emails (attachments are the primary payload). */
+function buildEmailText(meta = {}) {
+  const name = String(meta.customerName || '').trim();
+  const phone = String(meta.customerPhone || '').trim();
+  const model = String(meta.modelName || '').trim();
+  const accessories = String(meta.accessoryLine || '').trim();
+  const orderId = meta.orderId != null ? String(meta.orderId) : '';
+  const lines = [];
+
+  if (meta.isResend) {
+    lines.push('הזמנה חוזרת ממערכת ההזמנות.');
+  } else if (meta.kind === 'store-order-copy') {
+    lines.push('עותק הזמנה לחנות — מצורפים קבצי PDF.');
+  } else if (meta.kind === 'verses-print') {
+    lines.push('דף פסוקים להזמנה — מצורף PDF.');
+  } else {
+    lines.push('התקבלה הזמנה חדשה ממערכת ההזמנות — מצורף דף ההזמנה (PDF).');
+  }
+
+  lines.push('');
+  if (orderId) lines.push(`מספר הזמנה: ${orderId}`);
+  if (name) lines.push(`שם: ${name}`);
+  if (phone) lines.push(`מספר הזמנה ידני / טלפון: ${phone}`);
+  if (model) lines.push(`דגם: ${model}`);
+  if (accessories) lines.push(`אביזרים: ${accessories}`);
+  lines.push('');
+  lines.push('נא לבדוק את הקבצים המצורפים.');
+  return lines.join('\n');
 }
 
 function buildEmailSubject(meta = {}) {

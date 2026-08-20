@@ -424,7 +424,7 @@ export default function TemplateEditor({
       onOrderComplete?.(
         emailRes.completedItemId ?? emailRes.deletedItemId ?? itemId,
         emailRes.items || emailRes.remainingItems,
-        { isResend: orderSent }
+        { isResend: orderSent, sentTo: emailRes.sentTo }
       );
       // Keep button disabled until parent navigates home.
     } catch (err) {

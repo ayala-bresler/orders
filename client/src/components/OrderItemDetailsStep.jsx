@@ -396,7 +396,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
         onFinishWithoutVerses?.(
           completed.completedItemId ?? completed.deletedItemId ?? itemId,
           completed.items || completed.remainingItems,
-          { isResend: orderSent }
+          { isResend: orderSent, sentTo: completed.sentTo }
         );
       } catch (err) {
         setFinishing(false);

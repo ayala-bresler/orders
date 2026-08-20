@@ -74,6 +74,7 @@ function fmtDate(val, opts) {
 function applyFieldDirection(field, text, forceDir) {
   const dir = forceDir || detectTextDir(text);
   try {
+    // Hebrew / mixed RTL fields: right-aligned. Numbers / English: left-aligned.
     field.setAlignment(dir === 'ltr' ? TextAlignment.Left : TextAlignment.Right);
   } catch {
     /* alignment unsupported */
@@ -87,7 +88,6 @@ function setText(form, fieldName, value, font, { forceDir } = {}) {
   try {
     const field = form.getTextField(fieldName);
     applyFieldDirection(field, text, forceDir);
-    // pdf-lib has no BiDi: paint visual order so Hebrew / mixed / numbers read correctly.
     field.setText(preparePdfAppearanceText(text, { forceDir }));
     if (font) field.updateAppearances(font);
   } catch {
@@ -226,14 +226,17 @@ async function fillOrderPdf(payload) {
   setCheck(form, PDF_FIELD_MAP.breastplateCheck, payload.breastplateCheck);
   setText(form, PDF_FIELD_MAP.pointer, payload.pointer, hebrewFont);
   setCheck(form, PDF_FIELD_MAP.pointerCheck, payload.pointerCheck);
-  setText(form, PDF_FIELD_MAP.deliveryDate, payload.deliveryDate, hebrewFont);
-  setText(form, PDF_FIELD_MAP.orderDate, payload.orderDate, hebrewFont);
+  setText(form, PDF_FIELD_MAP.deliveryDate, payload.deliveryDate, hebrewFont, { forceDir: 'ltr' });
+  setText(form, PDF_FIELD_MAP.orderDate, payload.orderDate, hebrewFont, { forceDir: 'ltr' });
   setText(form, PDF_FIELD_MAP.parochetHeight, payload.parochetHeight, hebrewFont, { forceDir: 'ltr' });
 
+  // Verses are always Hebrew — force RTL (logical order + right align).
   for (const corner of CORNER_KEYS) {
     const fieldNames = PDF_FIELD_MAP.verses[corner];
     const lines = payload.verses[corner] || [];
-    fieldNames.forEach((name, idx) => setText(form, name, lines[idx] || '', hebrewFont));
+    fieldNames.forEach((name, idx) =>
+      setText(form, name, lines[idx] || '', hebrewFont, { forceDir: 'rtl' })
+    );
   }
 
   payload.notes.forEach((line, idx) => {

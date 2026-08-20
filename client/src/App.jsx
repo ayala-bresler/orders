@@ -560,9 +560,14 @@ export default function App() {
       clearVerseBakeCache(session.order.order_id, doneId);
     }
 
+    const sentTo = String(options.sentTo || '').trim();
+    const doneMessage = sentTo
+      ? `ההזמנה נשלחה בהצלחה למייל המנהל (${sentTo}).`
+      : 'ההזמנה הושלמה. ניתן להתחיל הזמנה חדשה.';
+
     const finish = () => {
       setResendNoticeOpen(false);
-      endSession('ההזמנה הושלמה. ניתן להתחיל הזמנה חדשה.');
+      endSession(doneMessage);
     };
 
     // Resend of an already-sent item: brief notice, then return to identify.

@@ -2,7 +2,7 @@
 
 /**
  * Bidirectional helpers for PDF / SVG / server-side rendering.
- * Keep in sync with client/src/utils/textDirection.js (client uses a lighter approx).
+ * Keep detectTextDir in sync with client/src/utils/textDirection.js
  */
 
 const bidiFactory = require('bidi-js');
@@ -27,8 +27,7 @@ function detectTextDir(text, { empty = 'rtl' } = {}) {
 
 /**
  * Visual left-to-right glyph order (Unicode Bidirectional Algorithm).
- * pdf-lib paints characters LTR with no BiDi — pass this string to setText /
- * updateAppearances (and to SVG path glyph walks).
+ * Used for SVG textPath / glyph bake — NOT for pdf-lib AcroForm fields.
  */
 function visualOrderString(text, { direction } = {}) {
   const raw = String(text ?? '');
@@ -43,19 +42,34 @@ function visualOrderChars(text, opts) {
 }
 
 /**
+ * pdf-lib AcroForm appearances typically keep Hebrew readable in logical order
+ * (with right alignment) but flip embedded English / digit runs.
+ * Reverse only those runs so numbers and Latin read LTR; leave Hebrew as typed.
+ */
+function compensateEmbeddedLtrRuns(text) {
+  return String(text ?? '').replace(
+    /[A-Za-z0-9]+(?:[./\-:_][A-Za-z0-9]+)*/g,
+    (run) => Array.from(run).reverse().join('')
+  );
+}
+
+/**
  * Prepare logical user text for pdf-lib AcroForm appearance streams.
- * forceDir: 'ltr' for pure numbers / measurements (no reorder).
+ * - forceDir 'ltr': measurements / pure English — no change
+ * - forceDir 'rtl' or Hebrew base: keep Hebrew logical; fix embedded LTR runs
  */
 function preparePdfAppearanceText(text, { forceDir } = {}) {
   const raw = String(text ?? '');
   if (!raw) return '';
-  if (forceDir === 'ltr') return raw;
-  return visualOrderString(raw, { direction: forceDir || detectTextDir(raw) });
+  const dir = forceDir || detectTextDir(raw);
+  if (dir === 'ltr') return raw;
+  return compensateEmbeddedLtrRuns(raw);
 }
 
 module.exports = {
   detectTextDir,
   visualOrderString,
   visualOrderChars,
+  compensateEmbeddedLtrRuns,
   preparePdfAppearanceText,
 };
