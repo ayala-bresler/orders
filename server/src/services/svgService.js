@@ -17,6 +17,7 @@ const templateResolver = require('./templateResolver');
 const {
   normalizeVerseText,
 } = require('../utils/verseText');
+const { boldRunsFromText } = require('../utils/verseBold');
 const {
   BASE_FONT_SIZE_PX,
   MAX_FONT_SIZE_PX,
@@ -109,6 +110,34 @@ function readHref(node) {
 function setTextContent(doc, node, value) {
   while (node.firstChild) node.removeChild(node.firstChild);
   node.appendChild(doc.createTextNode(value));
+}
+
+function setTextContentWithBoldRuns(doc, node, value, boldRanges) {
+  while (node.firstChild) node.removeChild(node.firstChild);
+  const text = String(value ?? '');
+  const runs = boldRunsFromText(text, boldRanges);
+  if (!runs.length) {
+    node.appendChild(doc.createTextNode(''));
+    return;
+  }
+  if (!runs.some((r) => r.bold)) {
+    node.appendChild(doc.createTextNode(text));
+    return;
+  }
+  for (const run of runs) {
+    const tspan = doc.createElement('tspan');
+    if (run.bold) {
+      tspan.setAttribute('font-weight', '700');
+      tspan.setAttribute('stroke', 'currentColor');
+      tspan.setAttribute('stroke-width', '0.45');
+      tspan.setAttribute('paint-order', 'stroke fill');
+      tspan.setAttribute('stroke-linejoin', 'round');
+    } else {
+      tspan.setAttribute('font-weight', '400');
+    }
+    tspan.appendChild(doc.createTextNode(run.text));
+    node.appendChild(tspan);
+  }
 }
 
 function indexEditableNodes(doc, fieldByHref) {
@@ -261,7 +290,7 @@ function applyVerseLayout(doc, primaryPath, text, stylesMap, field) {
   const sizePx = Math.max(MIN_FONT, verseStyle.fontSizePx);
   setTextFontSize(textEl, sizePx);
   setTextLetterSpacing(textEl, verseStyle.letterSpacingEm);
-  setTextContent(doc, primaryPath, line);
+  setTextContentWithBoldRuns(doc, primaryPath, line, verseStyle.boldRanges);
   // Uniform arc midpoint: path rotate places top/bottom; offset stays centered.
   primaryPath.setAttribute('text-anchor', 'middle');
   primaryPath.setAttribute('startOffset', '50%');

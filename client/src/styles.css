@@ -144,9 +144,11 @@ body {
 
 .verse-page-body {
   display: grid;
-  /* RTL: col 1 = right (form ~⅓), col 2 = left (preview ~⅔) */
-  grid-template-columns: minmax(280px, 1fr) minmax(0, 2fr);
-  gap: 10px;
+  /* RTL: col 1 = right (form ~45%), col 2 = left (preview ~55%) */
+  grid-template-columns: minmax(360px, 1fr) minmax(0, 1.2fr);
+  /* Critical: minmax(0,1fr) so preview can scroll instead of expanding the row */
+  grid-template-rows: minmax(0, 1fr);
+  gap: 14px;
   padding: 8px 14px;
   align-items: stretch;
 }
@@ -156,6 +158,7 @@ body {
     flex: 1;
     min-height: 0;
     overflow: hidden;
+    height: 100%;
   }
 }
 
@@ -170,7 +173,7 @@ body {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 8px;
+  padding: 12px;
 }
 
 @media (min-width: 900px) {
@@ -192,7 +195,10 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  height: 100%;
+  max-height: 100%;
   overflow: hidden;
+  position: relative;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -253,7 +259,7 @@ body {
 .dynamic-svg-form.layout-corners-stack {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
   width: 100%;
 }
 
@@ -294,7 +300,8 @@ body {
     overflow: visible;
   }
 
-  .dynamic-svg-form.layout-corners-stack .verse-field textarea {
+  .dynamic-svg-form.layout-corners-stack .verse-field textarea,
+  .dynamic-svg-form.layout-corners-stack .verse-field .verse-rich-input {
     flex: 1 1 auto;
     min-width: 0;
     min-height: 0;
@@ -310,7 +317,8 @@ body {
   }
 }
 
-.dynamic-svg-form.layout-corners-stack .verse-field textarea {
+.dynamic-svg-form.layout-corners-stack .verse-field textarea,
+.dynamic-svg-form.layout-corners-stack .verse-field .verse-rich-input {
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -475,7 +483,9 @@ body {
   }
 
   .dynamic-svg-form.layout-corners-stack .verse-field textarea,
-  .verse-page .verse-field textarea {
+  .dynamic-svg-form.layout-corners-stack .verse-field .verse-rich-input,
+  .verse-page .verse-field textarea,
+  .verse-page .verse-field .verse-rich-input {
     min-height: 2.9rem;
     height: auto;
     overflow-y: auto;
@@ -483,7 +493,7 @@ body {
   }
 
   .verse-page .font-controls {
-    flex: 0 0 46px;
+    flex: 0 0 72px;
     align-self: stretch;
     max-height: none;
     min-height: 2.9rem;
@@ -528,13 +538,24 @@ body {
   }
 
   .verse-page .preview-viewport--fit {
-    overflow: auto;
+    overflow: hidden;
   }
 
-  /* Zoomed: constrain height so overflow:auto scrolls inside preview only. */
+  /* Zoomed: bounded height so overflow:auto scrolls inside preview only. */
   .verse-page .preview-viewport--scroll {
+    display: block;
     overflow: auto;
+    overflow-x: auto;
+    overflow-y: auto;
     max-height: min(70dvh, 560px);
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .verse-page .preview-viewport--scroll::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
 
   .verse-page .svg-canvas--height-fit {
@@ -561,6 +582,12 @@ body {
     width: max-content;
     height: max-content;
     max-width: 100%;
+  }
+
+  .verse-page .preview-viewport--scroll .svg-canvas--height-fit,
+  .verse-page .preview-viewport--scroll .svg-canvas--height-fit .svg-canvas-inner {
+    max-width: none !important;
+    max-height: none !important;
   }
 
   .verse-page .svg-canvas--height-fit svg {
@@ -772,26 +799,63 @@ body {
   padding: 4px;
   min-height: 0;
   width: 100%;
-  display: flex;
+  display: block;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  pointer-events: auto;
+  touch-action: pan-x pan-y;
 }
 
 .preview-viewport--fit {
-  /* auto: no bar when content fits; appears if browser zoom / scale overflows */
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
   align-items: safe center;
   justify-content: safe center;
 }
 
+/* Zoomed: real scrollport — scrollbars hidden, wheel/touch/drag still work */
 .preview-viewport--scroll {
+  display: block;
   overflow: auto;
-  align-items: flex-start;
-  justify-content: flex-start;
-  scrollbar-gutter: stable;
+  overflow-x: auto;
+  overflow-y: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+  cursor: grab;
 }
+
+.preview-viewport--scroll:active,
+.preview-viewport--scroll.is-panning {
+  cursor: grabbing;
+}
+
+.preview-viewport--scroll::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+  width: 0;
+  height: 0;
+}
+
+.preview-viewport--scroll .svg-canvas,
+.preview-viewport--scroll .svg-canvas--height-fit,
+.preview-viewport--scroll .svg-canvas--height-fit .svg-canvas-inner {
+  max-width: none !important;
+  max-height: none !important;
+  flex-shrink: 0;
+  pointer-events: auto;
+}
+
+.preview-viewport--scroll .svg-canvas--height-fit svg {
+  pointer-events: none; /* let wheel/drag hit the scrollport, not SVG internals */
+}
+
 .svg-canvas {
   width: 100%;
   max-width: 100%;
+}
+.svg-canvas[data-overflow='1'],
+.svg-canvas[data-overflow='1'] .svg-canvas-inner {
+  max-width: none !important;
+  max-height: none !important;
 }
 .svg-canvas-inner {
   width: 100%;
@@ -908,15 +972,24 @@ body {
   position: static;
 }
 
-/* Desktop only — on mobile these would collapse the stacked preview to a speck. */
 @media (min-width: 900px) {
   .verse-page .preview-pane,
   .verse-preview-pane {
     min-height: 0;
+    height: 100%;
+    max-height: 100%;
+    overflow: hidden;
   }
 
   .verse-page .preview-viewport {
     min-height: 0;
+  }
+
+  .verse-page .form-pane,
+  .verse-form-pane {
+    min-height: 0;
+    height: 100%;
+    max-height: 100%;
   }
 }
 
@@ -926,6 +999,8 @@ body {
   margin-bottom: 4px;
   align-items: center;
   min-height: 1.4em;
+  position: relative;
+  z-index: 1;
 }
 
 .verse-page .preview-head .panel-title {
@@ -940,26 +1015,58 @@ body {
 }
 
 .verse-page .preview-viewport {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   max-height: none;
-  display: flex;
   padding: 4px;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   width: 100%;
   box-sizing: border-box;
+  pointer-events: auto;
+  touch-action: pan-x pan-y;
 }
 
 .verse-page .preview-viewport--fit {
-  overflow: auto;
+  display: flex;
+  overflow: hidden;
   align-items: center;
   justify-content: center;
+  cursor: default;
 }
 
 .verse-page .preview-viewport--scroll {
+  display: block;
   overflow: auto;
-  align-items: flex-start;
-  justify-content: flex-start;
-  scrollbar-gutter: stable;
+  overflow-x: auto;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  cursor: grab;
+}
+
+.verse-page .preview-viewport--scroll:active,
+.verse-page .preview-viewport--scroll.is-panning {
+  cursor: grabbing;
+}
+
+.verse-page .preview-viewport--scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.verse-page .preview-viewport--scroll .svg-canvas,
+.verse-page .preview-viewport--scroll .svg-canvas--height-fit,
+.verse-page .preview-viewport--scroll .svg-canvas--height-fit .svg-canvas-inner {
+  max-width: none !important;
+  max-height: none !important;
+  flex-shrink: 0;
+  pointer-events: auto;
+}
+
+.verse-page .preview-viewport--scroll .svg-canvas--height-fit svg {
+  pointer-events: none;
 }
 
 .verse-page .svg-canvas--height-fit {
@@ -977,6 +1084,11 @@ body {
   width: max-content;
   height: max-content;
   line-height: 0;
+}
+
+.verse-page .preview-viewport--scroll .svg-canvas--height-fit .svg-canvas-inner svg {
+  max-width: none !important;
+  max-height: none !important;
 }
 
 @media (min-width: 900px) {
@@ -1031,8 +1143,8 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  padding: 6px 8px;
+  gap: 8px;
+  padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
@@ -1245,7 +1357,7 @@ body {
   display: flex;
   flex-direction: row;
   align-items: stretch;
-  gap: 6px;
+  gap: 12px;
   margin-bottom: 0;
   overflow: visible;
   position: relative;
@@ -1260,16 +1372,17 @@ body {
 }
 
 .verse-page .form-pane {
-  padding: 8px;
+  padding: 12px;
 }
 
-.verse-page .verse-field textarea {
+.verse-page .verse-field textarea,
+.verse-page .verse-field .verse-rich-input {
   flex: 1;
   min-width: 0;
   min-height: 0;
   max-height: none;
   max-width: none;
-  padding: 6px 8px;
+  padding: 8px 10px;
   /* Readable, but small enough that full verse fits in 2 rows without scroll */
   font-size: 14px;
   line-height: 1.3;
@@ -1279,13 +1392,13 @@ body {
 }
 
 .verse-page .font-controls {
-  flex: 0 0 46px;
+  flex: 0 0 72px;
   display: flex;
   flex-direction: column;
   align-self: stretch;
   align-items: stretch;
   justify-content: stretch;
-  gap: 4px;
+  gap: 8px;
   min-height: 0;
   max-height: 100%;
   overflow: visible;
@@ -1299,12 +1412,13 @@ body {
 }
 
 .verse-page .spacing-arrows-btn {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 24px;
   height: auto;
   flex-direction: column;
   width: 100%;
   min-width: 0;
+  border-radius: 8px;
   position: relative;
   z-index: 1;
 }
@@ -1318,8 +1432,21 @@ body {
   border-top: 1px solid var(--line);
 }
 
+.verse-page .bold-toggle-btn {
+  flex: 1 1 0;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  height: auto;
+  min-height: 24px;
+  max-height: none;
+  align-self: stretch;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
 .verse-page .font-size-control {
-  flex: 0 0 auto;
+  flex: 1 1 0;
   min-height: 24px;
   height: auto;
   width: 100%;
@@ -1374,18 +1501,19 @@ body {
     align-items: stretch !important;
     justify-content: flex-start !important;
     width: auto !important;
-    min-width: 104px;
+    min-width: 152px;
     max-height: none !important;
-    gap: 4px !important;
+    gap: 8px !important;
   }
 
   .spacing-arrows-btn {
-    flex: 0 0 48px !important;
+    flex: 0 0 42px !important;
     flex-direction: row !important;
-    width: 48px !important;
-    min-width: 48px !important;
+    width: 42px !important;
+    min-width: 42px !important;
     height: 32px !important;
     min-height: 32px !important;
+    border-radius: 8px !important;
   }
 
   .spacing-arrow + .spacing-arrow {
@@ -1393,21 +1521,33 @@ body {
     border-right: 1px solid var(--line) !important;
   }
 
+  .bold-toggle-btn {
+    flex: 0 0 42px !important;
+    width: 42px !important;
+    min-width: 42px !important;
+    max-width: 42px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    border-radius: 8px !important;
+    font-size: 15px !important;
+    align-self: center !important;
+  }
+
   .font-size-control {
-    flex: 0 0 48px !important;
-    width: 48px !important;
-    min-width: 48px !important;
+    flex: 0 0 42px !important;
+    width: 42px !important;
+    min-width: 42px !important;
     height: 32px !important;
     min-height: 32px !important;
   }
 
   .font-size-readout {
-    width: 48px !important;
-    min-width: 48px !important;
+    width: 42px !important;
+    min-width: 42px !important;
     height: 32px !important;
     min-height: 32px !important;
     font-size: 14px;
-    padding: 0 6px;
+    padding: 0 4px;
   }
 }
 
@@ -1560,7 +1700,8 @@ body {
 }
 
 @media (max-height: 720px) {
-  .verse-page .verse-field textarea {
+  .verse-page .verse-field textarea,
+  .verse-page .verse-field .verse-rich-input {
     font-size: 13px;
   }
 
@@ -1638,14 +1779,15 @@ body {
 .verse-field {
   display: flex;
   align-items: stretch;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 .verse-field:last-child { margin-bottom: 0; }
-.verse-field textarea {
+.verse-field textarea,
+.verse-field .verse-rich-input {
   flex: 1 1 auto;
   min-width: 0;
-  max-width: calc(100% - 92px);
+  max-width: calc(100% - 150px);
   padding: 9px 11px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -1658,19 +1800,38 @@ body {
   word-break: break-word;
   white-space: pre-wrap;
 }
-.verse-field textarea:focus {
+.verse-field .verse-rich-input {
+  resize: none;
+  overflow-y: auto;
+  outline: none;
+  background: var(--bg, #fff);
+  color: inherit;
+  cursor: text;
+}
+.verse-field .verse-rich-input b,
+.verse-field .verse-rich-input strong {
+  font-weight: 700;
+}
+.verse-field .verse-rich-input[data-empty]::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  pointer-events: none;
+  font-weight: 400;
+}
+.verse-field textarea:focus,
+.verse-field .verse-rich-input:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(138, 109, 59, 0.15);
 }
 .font-controls {
   --control-h: 32px;
-  flex: 0 0 88px;
+  flex: 0 0 142px;
   display: flex;
   flex-direction: row;
   direction: ltr;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   flex-shrink: 0;
 }
 .font-size-readout {
@@ -1777,6 +1938,44 @@ body {
 .spacing-arrows-btn.active {
   border-color: var(--accent);
   background: rgba(138, 109, 59, 0.08);
+}
+.bold-toggle-btn {
+  box-sizing: border-box;
+  height: var(--control-h);
+  min-height: var(--control-h);
+  min-width: 42px;
+  width: 42px;
+  max-width: none;
+  padding: 0;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  align-self: center;
+  overflow: hidden;
+}
+.bold-toggle-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.bold-toggle-btn.active,
+.bold-toggle-btn.pressed {
+  border-color: var(--accent);
+  background: rgba(138, 109, 59, 0.12);
+  color: var(--accent);
+}
+.bold-toggle-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 .spacing-arrow {
   flex: 1;
@@ -3510,12 +3709,14 @@ html:has(.main-details) body {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 8px;
+  direction: ltr; /* left = next, right = prev — arrows face outward */
 }
 .date-popover-title {
   font-weight: 600;
   font-size: 14px;
   text-align: center;
   flex: 1;
+  direction: rtl; /* Hebrew month name stays RTL */
 }
 .date-nav-btn {
   width: 28px;
@@ -3545,12 +3746,19 @@ html:has(.main-details) body {
   cursor: pointer;
   padding: 0;
 }
-.date-cell:hover:not(.empty) {
+.date-cell:hover:not(.empty):not(:disabled):not(.disabled) {
   background: #f0f4f8;
 }
 .date-cell.empty {
   cursor: default;
   pointer-events: none;
+}
+.date-cell.disabled,
+.date-cell:disabled {
+  color: #b0b0b0;
+  cursor: not-allowed;
+  opacity: 0.55;
+  background: transparent;
 }
 .date-cell.today {
   outline: 1px solid var(--accent, #2b6cb0);
@@ -3558,6 +3766,20 @@ html:has(.main-details) body {
 .date-cell.selected {
   background: var(--accent, #2b6cb0);
   color: #fff;
+}
+.date-cell.selected.disabled,
+.date-cell.selected:disabled {
+  background: #c8c8c8;
+  color: #666;
+}
+.date-field.has-error .date-field-trigger {
+  border-color: #c62828;
+}
+.date-field-error {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #c62828;
+  line-height: 1.3;
 }
 .date-popover-foot {
   display: flex;
@@ -4627,10 +4849,19 @@ html:has(.main-model-picker) body {
   height: 20px;
 }
 
+/*
+ * Main content area (below tabs header) — shared clip frame for the
+ * diagonal “ההזמנה נשלחה” ribbon on details + verses tabs.
+ */
+.main-content-container {
+  position: relative;
+  overflow: hidden;
+}
+
 /* --- “ההזמנה נשלחה” markers (overlay only — do not alter page layout) --- */
 .order-sent-marker {
   pointer-events: none;
-  z-index: 6;
+  z-index: 10;
 }
 
 .order-sent-marker-text {
@@ -4656,7 +4887,7 @@ html:has(.main-model-picker) body {
   box-shadow: 0 3px 10px rgba(183, 28, 28, 0.45);
   transform: rotate(-26deg);
   transform-origin: left top;
-  z-index: 3;
+  z-index: 50;
 }
 
 .order-sent-marker--card .order-sent-marker-text {
@@ -4664,47 +4895,43 @@ html:has(.main-model-picker) body {
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
 }
 
-/* Desktop diagonal ribbon — top-left of page (details / verses) */
-.order-sent-marker--diagonal {
+/*
+ * Desktop diagonal ribbon — top-left of main content (below tabs, outside preview).
+ * Portaled into `.main-content-container`.
+ * transform-origin: left top keeps the whole ribbon below the tabs line
+ * (left-center origin was rotating the top half under the tabs bar / out of frame).
+ */
+.order-sent-marker--diagonal,
+.order-sent-ribbon {
   position: absolute;
-  top: 58px;
-  left: -20px;
+  top: 140px;
+  left: 0;
+  margin: 0;
   padding: 10px 48px;
   background: linear-gradient(90deg, #c62828, #8e0000);
   color: #fff;
   box-shadow: 0 6px 18px rgba(140, 0, 0, 0.35);
   transform: rotate(-32deg);
-  transform-origin: center center;
+  transform-origin: left top;
+  z-index: 10;
+  pointer-events: none;
 }
 
-.order-sent-marker--diagonal .order-sent-marker-text {
+.order-sent-marker--portaled {
+  position: absolute;
+  top: 140px;
+  left: 0;
+}
+
+.order-sent-marker--diagonal .order-sent-marker-text,
+.order-sent-ribbon .order-sent-marker-text {
   font-size: clamp(15px, 1.7vw, 22px);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
-/* Details: under the brown title banner */
-.order-sent-marker--details {
-  top: 58px;
-  left: -20px;
-}
-
-/* Verses: on the SVG preview — red corner kisses the top edge of the file */
-.verse-page .preview-viewport {
-  position: relative;
-}
-
-.verse-page .preview-viewport--sent {
-  overflow: visible;
-}
-
-/* Midpoint between previous (~113px) and kissing the top (0). */
-.order-sent-marker--verses {
-  top: 56px;
-  left: -10px;
-  z-index: 7;
-  transform: rotate(-32deg);
-  transform-origin: left top;
-  padding: 8px 40px;
+.verse-page .preview-viewport--scroll:active,
+.verse-page .preview-viewport--scroll.is-panning {
+  cursor: grabbing;
 }
 
 /* Mobile sticky strip above bottom nav — translucent overlay only */
@@ -4713,7 +4940,8 @@ html:has(.main-model-picker) body {
 }
 
 @media (max-width: 899px) {
-  .order-sent-marker--diagonal {
+  .order-sent-marker--diagonal,
+  .order-sent-ribbon {
     display: none;
   }
 
@@ -4725,7 +4953,7 @@ html:has(.main-model-picker) body {
     left: 12px;
     right: 12px;
     bottom: calc(64px + env(safe-area-inset-bottom, 0px));
-    z-index: 45;
+    z-index: 9999;
     margin: 0;
     padding: 10px 14px;
     border-radius: 12px;

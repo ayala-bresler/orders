@@ -849,17 +849,22 @@ export default function App() {
 
       <main
         className={
-          step === 'identify'
-            ? 'main-identify'
-            : step === 'editor'
-              ? 'main-editor'
-              : step === 'details'
-                ? 'main-details'
-                : step === 'product'
-                  ? 'main-model-picker'
-                  : step === 'resume'
-                    ? 'main-resume'
-                    : undefined
+          [
+            step === 'identify'
+              ? 'main-identify'
+              : step === 'editor'
+                ? 'main-editor'
+                : step === 'details'
+                  ? 'main-details'
+                  : step === 'product'
+                    ? 'main-model-picker'
+                    : step === 'resume'
+                      ? 'main-resume'
+                      : null,
+            step === 'editor' || step === 'details' ? 'main-content-container' : null,
+          ]
+            .filter(Boolean)
+            .join(' ') || undefined
         }
       >
         {step === 'identify' && (

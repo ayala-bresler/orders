@@ -21,6 +21,18 @@ function toDateOnlyString(val) {
   return `${y}-${m}-${day}`;
 }
 
+/** Today's calendar date in server local timezone (YYYY-MM-DD). */
+function todayDateOnly() {
+  return toDateOnlyString(new Date());
+}
+
+/** True when value is a calendar date strictly before today. */
+function isDateBeforeToday(val) {
+  const iso = toDateOnlyString(val);
+  if (!iso) return false;
+  return iso < todayDateOnly();
+}
+
 /** Hebrew display date DD/MM/YYYY (optional short year). */
 function formatHebrewDate(val, { shortYear = false } = {}) {
   const iso = toDateOnlyString(val);
@@ -29,4 +41,9 @@ function formatHebrewDate(val, { shortYear = false } = {}) {
   return shortYear ? `${day}/${m}/${y.slice(-2)}` : `${day}/${m}/${y}`;
 }
 
-module.exports = { toDateOnlyString, formatHebrewDate };
+module.exports = {
+  toDateOnlyString,
+  todayDateOnly,
+  isDateBeforeToday,
+  formatHebrewDate,
+};

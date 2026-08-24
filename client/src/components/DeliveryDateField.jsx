@@ -1,5 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { formatHebrewDate, toDateOnlyString } from '../utils/dates.js';
+import {
+  formatHebrewDate,
+  toDateOnlyString,
+  todayDateOnly,
+  isDateBeforeToday,
+} from '../utils/dates.js';
 import { IconCalendar } from './Icons.jsx';
 
 const WEEKDAYS = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
@@ -36,6 +41,10 @@ function startOfMonth(date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
+function sameMonth(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
+}
+
 function buildMonthGrid(monthDate) {
   const first = startOfMonth(monthDate);
   const startPad = first.getDay(); // Sunday = 0
@@ -52,23 +61,39 @@ function buildMonthGrid(monthDate) {
 /**
  * Custom date field with a popover calendar that flips above the field
  * when there is not enough space below (mobile-friendly).
+ * Past dates (before today) are disabled.
  */
 export default function DeliveryDateField({
   value,
   onChange,
   className = '',
   ariaLabel = 'תאריך אספקה (אופציונלי)',
+  error = '',
 }) {
   const iso = toDateOnlyString(value);
   const wrapRef = useRef(null);
   const popRef = useRef(null);
   const [open, setOpen] = useState(false);
   const [placement, setPlacement] = useState('below');
-  const [viewMonth, setViewMonth] = useState(() => parseIso(iso) || new Date());
+  const [viewMonth, setViewMonth] = useState(() => {
+    const selected = parseIso(iso);
+    const today = new Date();
+    if (selected && !isDateBeforeToday(toIso(selected))) return startOfMonth(selected);
+    return startOfMonth(today);
+  });
+
+  const minIso = todayDateOnly();
+  const pastSelected = Boolean(iso && isDateBeforeToday(iso));
 
   useEffect(() => {
     if (!open) return;
-    setViewMonth(parseIso(iso) || new Date());
+    const selected = parseIso(iso);
+    const today = new Date();
+    if (selected && !isDateBeforeToday(toIso(selected))) {
+      setViewMonth(startOfMonth(selected));
+    } else {
+      setViewMonth(startOfMonth(today));
+    }
   }, [open, iso]);
 
   useLayoutEffect(() => {
@@ -112,10 +137,13 @@ export default function DeliveryDateField({
 
   const cells = buildMonthGrid(viewMonth);
   const selected = parseIso(iso);
-  const todayIso = toIso(new Date());
+  const today = new Date();
+  const canGoPrev = !sameMonth(viewMonth, today) && viewMonth > startOfMonth(today);
 
   const pick = (date) => {
-    onChange(toIso(date));
+    const next = toIso(date);
+    if (next < minIso) return;
+    onChange(next);
     setOpen(false);
   };
 
@@ -124,8 +152,10 @@ export default function DeliveryDateField({
     setOpen(false);
   };
 
+  const showError = error || (pastSelected ? 'תאריך אספקה לא יכול להיות בעבר — יש לבחור מהיום והלאה.' : '');
+
   return (
-    <div className={`date-field${open ? ' is-open' : ''}`} ref={wrapRef}>
+    <div className={`date-field${open ? ' is-open' : ''}${showError ? ' has-error' : ''}`} ref={wrapRef}>
       <button
         type="button"
         className={`date-field-trigger ${className}`.trim()}
@@ -133,12 +163,18 @@ export default function DeliveryDateField({
         aria-label={ariaLabel}
         aria-expanded={open}
         aria-haspopup="dialog"
+        aria-invalid={Boolean(showError)}
       >
         <span className={iso ? 'date-field-value' : 'date-field-placeholder'} dir="ltr">
           {iso ? formatHebrewDate(iso) : 'בחר תאריך'}
         </span>
         <IconCalendar className="date-field-icon" />
       </button>
+      {showError ? (
+        <div className="date-field-error" role="alert">
+          {showError}
+        </div>
+      ) : null}
 
       {open && (
         <div
@@ -147,20 +183,8 @@ export default function DeliveryDateField({
           role="dialog"
           aria-label="בחירת תאריך"
         >
-          <div className="date-popover-head">
-            <button
-              type="button"
-              className="btn icon date-nav-btn"
-              onClick={() =>
-                setViewMonth((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))
-              }
-              aria-label="חודש קודם"
-            >
-              ›
-            </button>
-            <div className="date-popover-title">
-              {MONTHS_HE[viewMonth.getMonth()]} {viewMonth.getFullYear()}
-            </div>
+          <div className="date-popover-head" dir="ltr">
+            {/* Left (outward ‹): next month — Right (outward ›): previous month */}
             <button
               type="button"
               className="btn icon date-nav-btn"
@@ -170,6 +194,20 @@ export default function DeliveryDateField({
               aria-label="חודש הבא"
             >
               ‹
+            </button>
+            <div className="date-popover-title">
+              {MONTHS_HE[viewMonth.getMonth()]} {viewMonth.getFullYear()}
+            </div>
+            <button
+              type="button"
+              className="btn icon date-nav-btn"
+              onClick={() =>
+                setViewMonth((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))
+              }
+              disabled={!canGoPrev}
+              aria-label="חודש קודם"
+            >
+              ›
             </button>
           </div>
 
@@ -186,14 +224,17 @@ export default function DeliveryDateField({
               }
               const cellIso = toIso(date);
               const isSelected = selected && toIso(selected) === cellIso;
-              const isToday = cellIso === todayIso;
+              const isToday = cellIso === minIso;
+              const isPast = cellIso < minIso;
               return (
                 <button
                   key={cellIso}
                   type="button"
                   className={`date-cell${isSelected ? ' selected' : ''}${
                     isToday ? ' today' : ''
-                  }`}
+                  }${isPast ? ' disabled' : ''}`}
+                  disabled={isPast}
+                  aria-disabled={isPast}
                   onClick={() => pick(date)}
                 >
                   {date.getDate()}

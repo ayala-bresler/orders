@@ -14,6 +14,7 @@ import EtzChaimMeasuresDiagram from './EtzChaimMeasuresDiagram.jsx';
 import ModelSelect from './ModelSelect.jsx';
 import NumberedNotesArea from './NumberedNotesArea.jsx';
 import DeliveryDateField from './DeliveryDateField.jsx';
+import { isDateBeforeToday } from '../utils/dates.js';
 import { IconBack, IconContinue } from './Icons.jsx';
 import { prefetchVerseBake } from '../utils/verseBakePrefetch.js';
 import OrderSentMarker from './OrderSentMarker.jsx';
@@ -356,6 +357,11 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
 
   const handleSaveAndContinue = async () => {
     try {
+      if (isDateBeforeToday(order.estimated_delivery_date)) {
+        setError('תאריך אספקה לא יכול להיות בעבר — יש לבחור מהיום והלאה.');
+        return null;
+      }
+
       const payloadPreview = normalizeItemForSave({
         ...item,
         quantity: item.quantity === '' || item.quantity == null ? 1 : item.quantity,
@@ -447,8 +453,13 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
     <div className={`card details-step${orderSent ? ' details-step--sent' : ''}`}>
       {orderSent ? (
         <>
-          <OrderSentMarker variant="diagonal" className="order-sent-marker--details" />
-          <OrderSentMarker variant="sticky" />
+          <OrderSentMarker
+            variant="diagonal"
+            className="order-sent-ribbon"
+            anchorSelector=".main-content-container"
+            visible
+          />
+          <OrderSentMarker variant="sticky" visible />
         </>
       ) : null}
       <header className="details-page-banner" aria-label="כותרת">

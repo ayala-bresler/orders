@@ -53,13 +53,8 @@ export default function MyCustomersPanel({
     const q = filter.trim().toLowerCase();
     const list = customers.filter((c) => {
       if (!q) return true;
-      return (
-        String(c.full_name || '').toLowerCase().includes(q) ||
-        String(c.phone || '').includes(q) ||
-        String(c.model_name || '').toLowerCase().includes(q) ||
-        String(c.plate_diameter || '').includes(q) ||
-        String(c.order_id || '').includes(q)
-      );
+      // Manual order number only (customers.phone) — not auto order id / name / model.
+      return String(c.phone || '').toLowerCase().includes(q);
     });
     const sorted = [...list].sort(compareOrderNumbers);
     if (orderNumberDir === 'desc') sorted.reverse();
@@ -200,7 +195,7 @@ export default function MyCustomersPanel({
               dir={detectTextDir(filter)}
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              placeholder="שם / מספר הזמנה / דגם"
+              placeholder="מספר הזמנה"
             />
           </label>
           {error && <div className="notice error inline">{error}</div>}

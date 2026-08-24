@@ -10,6 +10,11 @@ const { TEMPLATE, SVG_OUTER_RX, SVG_INNER_RX, MEDALLION_CENTERS } = require('./t
 const { FIELD_BY_HREF } = require('../config/template');
 const { pathToPolylines, transformPolylines } = require('./pathUtils');
 const { detectTextDir, visualOrderChars } = require('../utils/textDirection');
+const bidiFactory = require('bidi-js');
+const bidi = bidiFactory();
+
+/** Scale factor for synthetic bold outlines (font file is already Bold OTF). */
+const SYNTHETIC_BOLD_SIZE = 1.14;
 
 const _fontCache = new Map();
 
@@ -455,25 +460,27 @@ function transformOpentypePath(path, ox, oy, angle) {
   return parts.join(' ');
 }
 
-function glyphOutlinePaths(font, char, fontSize, anchor) {
+function glyphOutlinePaths(font, char, fontSize, anchor, { bold = false } = {}) {
   const g = font.charToGlyph(char);
   if (!g || g.unicode === undefined) return [];
   const baselineY = anchor.baselineLocalY ?? 0;
-  let outline = g.getPath(0, baselineY, fontSize);
+  const drawSize = bold ? fontSize * SYNTHETIC_BOLD_SIZE : fontSize;
+  let outline = g.getPath(0, baselineY, drawSize);
   if (anchor.useEmCenter) {
-    outline = shiftOutlineToEmCenter(outline, font, fontSize);
+    outline = shiftOutlineToEmCenter(outline, font, drawSize);
   }
   const d = transformOpentypePath(outline, anchor.x, anchor.y, anchor.angle);
   return d ? [d] : [];
 }
 
-function glyphToPolylines(font, char, fontSize, anchor) {
+function glyphToPolylines(font, char, fontSize, anchor, { bold = false } = {}) {
   const g = font.charToGlyph(char);
   if (!g || g.unicode === undefined) return [];
   const baselineY = anchor?.baselineLocalY ?? 0;
-  const outline = g.getPath(0, baselineY, fontSize);
+  const drawSize = bold ? fontSize * SYNTHETIC_BOLD_SIZE : fontSize;
+  const outline = g.getPath(0, baselineY, drawSize);
   if (anchor?.useEmCenter) {
-    shiftOutlineToEmCenter(outline, font, fontSize);
+    shiftOutlineToEmCenter(outline, font, drawSize);
   }
   const d = outline.toPathData(2);
   return pathToPolylines(d);
@@ -505,6 +512,34 @@ function isRtlText(text) {
  */
 function charsForTextPath(text) {
   return visualOrderChars(text);
+}
+
+/** Trim matching boldFlags (logical indices) to the same slice as layout text. */
+function trimTextWithBoldFlags(text, boldFlags) {
+  const t = String(text ?? '');
+  const flags = Array.isArray(boldFlags) ? boldFlags : [];
+  let start = 0;
+  let end = t.length;
+  while (start < end && /\s/.test(t[start])) start += 1;
+  while (end > start && /\s/.test(t[end - 1])) end -= 1;
+  return {
+    text: t.slice(start, end),
+    boldFlags: flags.slice(start, end),
+  };
+}
+
+/** Visual LTR glyph order with per-char bold from logical boldFlags. */
+function visualCharsWithBold(text, boldFlags) {
+  const raw = String(text ?? '');
+  if (!raw) return [];
+  const flags = Array.isArray(boldFlags) ? boldFlags : [];
+  const dir = detectTextDir(raw);
+  const levels = bidi.getEmbeddingLevels(raw, dir === 'ltr' ? 'ltr' : 'rtl');
+  const indices = bidi.getReorderedIndices(raw, levels);
+  return indices.map((i) => ({
+    ch: raw[i],
+    bold: !!flags[i],
+  }));
 }
 
 function verseTextMidpointDist(pathGuide, font, text, fontSize, startOffset, textAnchor, letterSpacingEm = 0) {
@@ -744,30 +779,34 @@ function layoutTextPathItem(font, item, pathGuide, outPolylines, outPaths) {
   const sampler = createPathGuideSampler(pathGuide);
   const len = sampler.length();
   if (!(len > 0)) return;
-  const chars = charsForTextPath(String(item.text || '').trim());
-  if (!chars.length) return;
+  const trimmed = trimTextWithBoldFlags(item.text, item.boldFlags);
+  const glyphs = visualCharsWithBold(trimmed.text, trimmed.boldFlags);
+  if (!glyphs.length) return;
 
   const letterSpacingEm = item.letterSpacingEm || 0;
   const spacingPx = letterSpacingEm * item.fontSize;
-  const advances = chars.map((ch) => glyphAdvanceWithSpacing(font, ch, item.fontSize, letterSpacingEm).base);
-  const totalAdvance = advances.reduce((s, v) => s + v, 0) + Math.max(0, chars.length - 1) * spacingPx;
+  const advances = glyphs.map(
+    (g) => glyphAdvanceWithSpacing(font, g.ch, item.fontSize, letterSpacingEm).base
+  );
+  const totalAdvance = advances.reduce((s, v) => s + v, 0) + Math.max(0, glyphs.length - 1) * spacingPx;
 
   let start = resolveOffset(item.startOffset, len);
   if (item.textAnchor === 'middle') start -= totalAdvance / 2;
   else if (item.textAnchor === 'end') start -= totalAdvance;
 
   let cursor = start;
-  for (let i = 0; i < chars.length; i += 1) {
+  for (let i = 0; i < glyphs.length; i += 1) {
     const base = sampler.at(Math.max(0, Math.min(len, cursor)));
     const anchor = anchorOnTextPath(base, pathGuide, font, item);
-    const glyphLines = glyphToPolylines(font, chars[i], item.fontSize, anchor);
+    const opts = { bold: glyphs[i].bold };
+    const glyphLines = glyphToPolylines(font, glyphs[i].ch, item.fontSize, anchor, opts);
     for (const gl of glyphLines) {
       outPolylines.push(transformGlyphPolyline(gl, anchor));
     }
-    for (const d of glyphOutlinePaths(font, chars[i], item.fontSize, anchor)) {
+    for (const d of glyphOutlinePaths(font, glyphs[i].ch, item.fontSize, anchor, opts)) {
       outPaths.push(d);
     }
-    cursor += advances[i] + (i < chars.length - 1 ? spacingPx : 0);
+    cursor += advances[i] + (i < glyphs.length - 1 ? spacingPx : 0);
   }
 }
 

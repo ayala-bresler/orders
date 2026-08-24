@@ -12,7 +12,7 @@ import {
   emailOrderItemDxf,
 } from '../api.js';
 import {
-  PREVIEW_SCROLL_ZOOM_THRESHOLD,
+  PREVIEW_SCROLL_Y_ZOOM,
   MOBILE_LAYOUT_MQ,
   MOBILE_PREVIEW_DEFAULT_ZOOM,
   DESKTOP_PREVIEW_DEFAULT_ZOOM,
@@ -27,6 +27,7 @@ import {
   adjustLetterSpacing,
   LETTER_SPACING_STEP_EM,
 } from '../utils/verseStyles.js';
+import { toggleBoldRanges, clampBoldRangesToText } from '../utils/verseBold.js';
 import {
   saveVerseDraft,
   loadVerseDraft,
@@ -85,6 +86,12 @@ export default function TemplateEditor({
     setDefaultPreviewZoom(nextDefault);
     setPreviewZoom(nextDefault);
   }, [orderId, itemId, templateKey]);
+
+  // Reset local “just sent” flag when switching order/item (new file / navigation).
+  useEffect(() => {
+    setOrderCompleted(false);
+    setSaveAcknowledged(false);
+  }, [orderId, itemId]);
 
   useEffect(() => {
     const mq = window.matchMedia(MOBILE_LAYOUT_MQ);
@@ -281,8 +288,23 @@ export default function TemplateEditor({
     return textDirty || scaleDirty || symbolsDirty;
   }, [fields, values, savedValues, fontScales, savedFontScales]);
 
-  const handleChange = (key, val) => {
+  const handleChange = (key, val, boldRangesFromEditor) => {
     setValues((v) => ({ ...v, [key]: val }));
+    setFontScales((s) => {
+      const base = fields.find((f) => f.key === key)?.fontSizePx ?? 16;
+      const cur = styleForKey(s, key, base);
+      const nextRanges =
+        boldRangesFromEditor != null
+          ? boldRangesFromEditor
+          : clampBoldRangesToText(cur.boldRanges, val);
+      if (!(nextRanges?.length) && !(cur.boldRanges?.length)) return s;
+      const next = { ...cur, boldRanges: nextRanges };
+      const patch = compactStylePatch(next, base);
+      const out = { ...s };
+      if (Object.keys(patch).length) out[key] = patch;
+      else delete out[key];
+      return out;
+    });
     setSaveAcknowledged(false);
     setOrderCompleted(false);
   };
@@ -318,6 +340,14 @@ export default function TemplateEditor({
     patchStyle(key, (cur) => ({
       ...cur,
       letterSpacingEm: adjustLetterSpacing(cur.letterSpacingEm, -LETTER_SPACING_STEP_EM),
+    }));
+  };
+
+  const handleToggleBold = (key, start, end) => {
+    const text = values[key] ?? '';
+    patchStyle(key, (cur) => ({
+      ...cur,
+      boldRanges: toggleBoldRanges(cur.boldRanges, start, end, text.length),
     }));
   };
 
@@ -470,8 +500,18 @@ export default function TemplateEditor({
   const previewFontScales = bakedSvg ? {} : fontScales;
 
   return (
-    <div className={`verse-page${orderSent ? ' verse-page--sent' : ''}`}>
-      {orderSent ? <OrderSentMarker variant="sticky" /> : null}
+    <div className={`verse-page${orderSent || orderCompleted ? ' verse-page--sent' : ''}`}>
+      {orderSent || orderCompleted ? (
+        <>
+          <OrderSentMarker
+            variant="diagonal"
+            className="order-sent-ribbon"
+            anchorSelector=".main-content-container"
+            visible
+          />
+          <OrderSentMarker variant="sticky" visible />
+        </>
+      ) : null}
       <img
         className="verse-print-logo"
         src="/img-judaica-logo-with-bg.png?v=5"
@@ -504,13 +544,14 @@ export default function TemplateEditor({
             onSetFontSize={handleSetFontSize}
             onWidenSpacing={handleWidenSpacing}
             onTightenSpacing={handleTightenSpacing}
+            onToggleBold={handleToggleBold}
             onCornerSymbolPatch={handleCornerSymbolPatch}
           />
 
           {error && <div className="notice error inline">{error}</div>}
         </section>
 
-        {/* Preview always mounts (including after order sent) — marker hugs SVG top edge. */}
+        {/* Preview always mounts (including after order sent). */}
         <section className="preview-pane verse-preview-pane" aria-label="תצוגת SVG">
           <div className="preview-head">
             <h3 className="panel-title">תצוגה</h3>
@@ -545,15 +586,15 @@ export default function TemplateEditor({
             </div>
           </div>
           <div
-            className={`preview-viewport${
-              previewZoom > PREVIEW_SCROLL_ZOOM_THRESHOLD
-                ? ' preview-viewport--scroll'
-                : ' preview-viewport--fit'
-            }${orderSent ? ' preview-viewport--sent' : ''}`}
+            className={[
+              'preview-viewport',
+              previewZoom >= PREVIEW_SCROLL_Y_ZOOM
+                ? 'preview-viewport--scroll'
+                : 'preview-viewport--fit',
+            ]
+              .filter(Boolean)
+              .join(' ')}
           >
-            {orderSent ? (
-              <OrderSentMarker variant="diagonal" className="order-sent-marker--verses" />
-            ) : null}
             {previewSvg ? (
               <LiveSvgCanvas
                 ref={canvasRef}

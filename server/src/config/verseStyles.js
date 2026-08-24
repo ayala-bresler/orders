@@ -5,6 +5,8 @@
  * Each field’s default is the size authored in the SVG file.
  * Users may pick any size from MIN…MAX (including 16) for every template.
  */
+const { normalizeBoldRanges } = require('../utils/verseBold');
+
 const MAX_FONT_SIZE_PX = 16;
 const BASE_FONT_SIZE_PX = MAX_FONT_SIZE_PX; // legacy alias / fallback when file size unknown
 const MIN_FONT_SIZE_PX = Math.round(MAX_FONT_SIZE_PX * 0.55 * 10) / 10;
@@ -29,7 +31,18 @@ function clampFontSize(n, baseFontSizePx = BASE_FONT_SIZE_PX) {
 }
 
 function emptyStyle(baseFontSizePx = BASE_FONT_SIZE_PX) {
-  return { fontSizePx: clampFontSize(baseFontSizePx, baseFontSizePx), letterSpacingEm: 0 };
+  return {
+    fontSizePx: clampFontSize(baseFontSizePx, baseFontSizePx),
+    letterSpacingEm: 0,
+    boldRanges: [],
+  };
+}
+
+function boldRangesEqual(a, b) {
+  const aa = normalizeBoldRanges(a, Number.MAX_SAFE_INTEGER);
+  const bb = normalizeBoldRanges(b, Number.MAX_SAFE_INTEGER);
+  if (aa.length !== bb.length) return false;
+  return aa.every((r, i) => r.start === bb[i].start && r.end === bb[i].end);
 }
 
 /**
@@ -43,13 +56,14 @@ function normalizeStyleEntry(raw, baseFontSizePx = BASE_FONT_SIZE_PX) {
 
   let fontSizePx = base;
   let letterSpacingEm = 0;
+  let boldRanges = [];
 
   if (typeof raw === 'number') {
     const n = Number(raw);
     if (Number.isFinite(n) && n < 0.999) {
       fontSizePx = clampFontSize(base * Math.max(0.55, Math.min(1, n)), base);
     }
-    return { fontSizePx, letterSpacingEm };
+    return { fontSizePx, letterSpacingEm, boldRanges };
   }
 
   if (typeof raw === 'object' && !Array.isArray(raw)) {
@@ -69,7 +83,10 @@ function normalizeStyleEntry(raw, baseFontSizePx = BASE_FONT_SIZE_PX) {
         letterSpacingEm = Math.max(LETTER_SPACING_MIN_EM, Math.min(LETTER_SPACING_MAX_EM, round3(n)));
       }
     }
-    return { fontSizePx, letterSpacingEm };
+    if (Array.isArray(raw.boldRanges)) {
+      boldRanges = normalizeBoldRanges(raw.boldRanges, Number.MAX_SAFE_INTEGER);
+    }
+    return { fontSizePx, letterSpacingEm, boldRanges };
   }
 
   return emptyStyle(base);
@@ -94,6 +111,9 @@ function compactStylesMap(input, baseByKey = {}) {
     if (Math.abs(style.fontSizePx - base) > 0.01) entry.fontSizePx = round1(style.fontSizePx);
     if (Math.abs(style.letterSpacingEm) > 0.0001) {
       entry.letterSpacingEm = round3(style.letterSpacingEm);
+    }
+    if (style.boldRanges?.length) {
+      entry.boldRanges = style.boldRanges.map((r) => ({ start: r.start, end: r.end }));
     }
     if (Object.keys(entry).length) out[key] = entry;
   }
@@ -178,6 +198,22 @@ function validateStylesMap(input, fieldByKey) {
         }
         if (Math.abs(n) > 0.0001) entry.letterSpacingEm = round3(n);
       }
+      if (raw.boldRanges != null) {
+        if (!Array.isArray(raw.boldRanges)) {
+          errors.push(`Bold ranges for "${key}" must be an array.`);
+          continue;
+        }
+        const ranges = normalizeBoldRanges(raw.boldRanges, Number.MAX_SAFE_INTEGER);
+        for (const r of ranges) {
+          if (!Number.isFinite(r.start) || !Number.isFinite(r.end) || r.start < 0 || r.end < r.start) {
+            errors.push(`Invalid bold range for "${key}".`);
+            break;
+          }
+        }
+        if (ranges.length) {
+          entry.boldRanges = ranges.map((r) => ({ start: r.start, end: r.end }));
+        }
+      }
     } else {
       errors.push(`Style for "${key}" must be a number or object.`);
       continue;
@@ -194,7 +230,11 @@ function styleForKey(stylesMap, key, baseFontSizePx = BASE_FONT_SIZE_PX) {
 function stylesEqual(a, b, baseFontSizePx = BASE_FONT_SIZE_PX) {
   const sa = normalizeStyleEntry(a, baseFontSizePx);
   const sb = normalizeStyleEntry(b, baseFontSizePx);
-  return sa.fontSizePx === sb.fontSizePx && sa.letterSpacingEm === sb.letterSpacingEm;
+  return (
+    sa.fontSizePx === sb.fontSizePx &&
+    sa.letterSpacingEm === sb.letterSpacingEm &&
+    boldRangesEqual(sa.boldRanges, sb.boldRanges)
+  );
 }
 
 module.exports = {

@@ -1,6 +1,4 @@
-import { useMemo } from 'react';
-import { normalizeVerseText } from '../utils/verseText.js';
-import { detectTextDir } from '../utils/textDirection.js';
+import { useMemo, useRef, useState } from 'react';
 import {
   groupDiscoveredFields,
   orderGroupsForCornerGrid,
@@ -15,6 +13,7 @@ import {
   LETTER_SPACING_MAX_EM,
   styleForKey,
 } from '../utils/verseStyles.js';
+import { isFullyBold, isRangeFullyBold } from '../utils/verseBold.js';
 import {
   SYMBOL_TYPES,
   SYMBOL_TYPE_LABELS,
@@ -25,6 +24,7 @@ import {
   readCornerSymbolsFromFontScales,
 } from '../utils/cornerSymbols.js';
 import FontSizeControl from './FontSizeControl.jsx';
+import VerseRichInput from './VerseRichInput.jsx';
 
 /** Icon paths (local coords, tip-up) — match server sparkle4 / star5 / diamond. */
 const SYMBOL_ICON_PATHS = {
@@ -193,7 +193,10 @@ function VerseFieldInput({
   onSetFontSize,
   onWidenSpacing,
   onTightenSpacing,
+  onToggleBold,
 }) {
+  const editorRef = useRef(null);
+  const [selection, setSelection] = useState({ start: 0, end: 0 });
   const basePx = field.fontSizePx ?? BASE_FONT_SIZE_PX;
   const style = styleForKey(fontScales, field.key, basePx);
   const fontPx = style.fontSizePx ?? basePx;
@@ -203,27 +206,49 @@ function VerseFieldInput({
   const customSpacing = Math.abs(style.letterSpacingEm) > 0.0001;
   const placeholder = defaults?.[field.key] || field.defaultText || '';
   const fieldValue = values[field.key] ?? '';
+  const textLen = fieldValue.length;
+  const boldPressed =
+    textLen > 0 &&
+    (selection.end > selection.start
+      ? isRangeFullyBold(style.boldRanges, selection.start, selection.end, textLen)
+      : isFullyBold(style.boldRanges, textLen));
+  const hasBold = (style.boldRanges || []).length > 0;
 
   const ringLabel = ringDisplayLabel(field.ring);
+
+  const handleToggleBold = () => {
+    const sel = editorRef.current?.getSelection?.() ?? selection;
+    const start = sel.start ?? 0;
+    const end = sel.end ?? 0;
+    setSelection({ start, end });
+    onToggleBold?.(field.key, start, end);
+    requestAnimationFrame(() => {
+      editorRef.current?.focus?.();
+      editorRef.current?.setSelection?.(start, end);
+      setSelection({ start, end });
+    });
+  };
 
   return (
     <div className="verse-field">
       {ringLabel ? (
         <span className="verse-field-sublabel">{ringLabel}</span>
       ) : null}
-      <textarea
+      <VerseRichInput
+        ref={editorRef}
         id={`field-${field.key}`}
-        dir={detectTextDir(fieldValue)}
-        className="bidi-input"
-        rows={2}
-        wrap="soft"
-        maxLength={maxVerseLength}
         value={fieldValue}
+        boldRanges={style.boldRanges}
         placeholder={placeholder}
-        aria-label={field.label || field.key}
-        onChange={(e) => onChange(field.key, normalizeVerseText(e.target.value))}
+        maxLength={maxVerseLength}
+        ariaLabel={field.label || field.key}
+        onSelectionChange={setSelection}
+        onChange={(text, boldRanges) => onChange(field.key, text, boldRanges)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') e.preventDefault();
+          if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+            e.preventDefault();
+            handleToggleBold();
+          }
         }}
       />
       <div className="font-controls">
@@ -250,6 +275,18 @@ function VerseFieldInput({
             ▼
           </button>
         </div>
+        <button
+          type="button"
+          className={`bold-toggle-btn${hasBold ? ' active' : ''}${boldPressed ? ' pressed' : ''}`}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={handleToggleBold}
+          disabled={!textLen || typeof onToggleBold !== 'function'}
+          title="הדגשה (Bold) — קטע מסומן או כל השורה"
+          aria-label="הדגשת טקסט"
+          aria-pressed={boldPressed}
+        >
+          B
+        </button>
         <FontSizeControl
           value={fontPx}
           baseFontSizePx={basePx}
@@ -273,6 +310,7 @@ export default function DynamicSvgForm({
   onSetFontSize,
   onWidenSpacing,
   onTightenSpacing,
+  onToggleBold,
   onCornerSymbolPatch,
 }) {
   const groups = useMemo(() => {
@@ -319,6 +357,7 @@ export default function DynamicSvgForm({
                   onSetFontSize={onSetFontSize}
                   onWidenSpacing={onWidenSpacing}
                   onTightenSpacing={onTightenSpacing}
+                  onToggleBold={onToggleBold}
                 />
               ))}
             </fieldset>
