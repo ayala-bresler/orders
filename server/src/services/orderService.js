@@ -43,7 +43,7 @@ const svgService = require('./svgService');
 const templateResolver = require('./templateResolver');
 const { isCrownOnlyPlateSize } = require('../utils/productSizeDisplay');
 const { formatModelLabel } = require('../utils/modelSku');
-const { toDateOnlyString, formatHebrewDate } = require('../utils/dates');
+const { toDateOnlyString, formatHebrewDate, isDateBeforeToday } = require('../utils/dates');
 
 const STORAGE_DIR =
   process.env.STORAGE_DIR ||
@@ -156,6 +156,9 @@ function fontScalesFromRow(row) {
       (val && typeof val === 'object' && (val.fontSizePx != null || val.fontSizePt != null || val.fontScale != null));
     if (hadSize) entry.fontSizePx = style.fontSizePx;
     if (Math.abs(style.letterSpacingEm) > 0.0001) entry.letterSpacingEm = style.letterSpacingEm;
+    if (style.boldRanges?.length) {
+      entry.boldRanges = style.boldRanges.map((r) => ({ start: r.start, end: r.end }));
+    }
     if (Object.keys(entry).length) out[key] = entry;
   }
   const cornerSymbols = normalizeCornerSymbols(raw[CORNER_SYMBOLS_KEY]);
@@ -340,6 +343,16 @@ function parseIncomingValue(key, raw) {
   if (key === 'order_notes') {
     const text = raw == null ? '' : String(raw);
     return clampOrderNotes(text) || null;
+  }
+  if (key === 'estimated_delivery_date') {
+    const iso = toDateOnlyString(raw);
+    if (!iso) return null;
+    if (isDateBeforeToday(iso)) {
+      const err = new Error('תאריך אספקה לא יכול להיות בעבר — יש לבחור מהיום והלאה.');
+      err.status = 400;
+      throw err;
+    }
+    return iso;
   }
   return String(raw).trim() || null;
 }

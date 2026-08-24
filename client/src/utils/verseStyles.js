@@ -1,5 +1,7 @@
 /** Client mirror of server/src/config/verseStyles.js (verse editor controls). */
 
+import { normalizeBoldRanges } from './verseBold.js';
+
 export const MAX_FONT_SIZE_PX = 16;
 export const BASE_FONT_SIZE_PX = MAX_FONT_SIZE_PX;
 export const MIN_FONT_SIZE_PX = Math.round(MAX_FONT_SIZE_PX * 0.55 * 10) / 10;
@@ -32,7 +34,18 @@ function clampFontSize(n, baseFontSizePx = BASE_FONT_SIZE_PX) {
 }
 
 export function emptyStyle(baseFontSizePx = BASE_FONT_SIZE_PX) {
-  return { fontSizePx: clampFontSize(baseFontSizePx, baseFontSizePx), letterSpacingEm: 0 };
+  return {
+    fontSizePx: clampFontSize(baseFontSizePx, baseFontSizePx),
+    letterSpacingEm: 0,
+    boldRanges: [],
+  };
+}
+
+function boldRangesEqual(a, b) {
+  const aa = normalizeBoldRanges(a, Number.MAX_SAFE_INTEGER);
+  const bb = normalizeBoldRanges(b, Number.MAX_SAFE_INTEGER);
+  if (aa.length !== bb.length) return false;
+  return aa.every((r, i) => r.start === bb[i].start && r.end === bb[i].end);
 }
 
 export function normalizeStyleEntry(raw, baseFontSizePx = BASE_FONT_SIZE_PX) {
@@ -41,13 +54,14 @@ export function normalizeStyleEntry(raw, baseFontSizePx = BASE_FONT_SIZE_PX) {
 
   let fontSizePx = base;
   let letterSpacingEm = 0;
+  let boldRanges = [];
 
   if (typeof raw === 'number') {
     const n = Number(raw);
     if (Number.isFinite(n) && n < 0.999) {
       fontSizePx = clampFontSize(base * Math.max(0.55, Math.min(1, n)), base);
     }
-    return { fontSizePx, letterSpacingEm };
+    return { fontSizePx, letterSpacingEm, boldRanges };
   }
 
   if (typeof raw === 'object' && !Array.isArray(raw)) {
@@ -67,7 +81,10 @@ export function normalizeStyleEntry(raw, baseFontSizePx = BASE_FONT_SIZE_PX) {
         letterSpacingEm = Math.max(LETTER_SPACING_MIN_EM, Math.min(LETTER_SPACING_MAX_EM, round3(n)));
       }
     }
-    return { fontSizePx, letterSpacingEm };
+    if (Array.isArray(raw.boldRanges)) {
+      boldRanges = normalizeBoldRanges(raw.boldRanges, Number.MAX_SAFE_INTEGER);
+    }
+    return { fontSizePx, letterSpacingEm, boldRanges };
   }
 
   return emptyStyle(base);
@@ -84,6 +101,9 @@ export function compactStylePatch(style, baseFontSizePx = BASE_FONT_SIZE_PX) {
   const out = {};
   if (Math.abs(s.fontSizePx - base) > 0.01) out.fontSizePx = round1(s.fontSizePx);
   if (Math.abs(s.letterSpacingEm) > 0.0001) out.letterSpacingEm = round3(s.letterSpacingEm);
+  if (s.boldRanges?.length) {
+    out.boldRanges = s.boldRanges.map((r) => ({ start: r.start, end: r.end }));
+  }
   return out;
 }
 
@@ -104,5 +124,9 @@ export function adjustLetterSpacing(current, delta) {
 export function stylesEqual(a, b, baseFontSizePx = BASE_FONT_SIZE_PX) {
   const sa = normalizeStyleEntry(a, baseFontSizePx);
   const sb = normalizeStyleEntry(b, baseFontSizePx);
-  return sa.fontSizePx === sb.fontSizePx && sa.letterSpacingEm === sb.letterSpacingEm;
+  return (
+    sa.fontSizePx === sb.fontSizePx &&
+    sa.letterSpacingEm === sb.letterSpacingEm &&
+    boldRangesEqual(sa.boldRanges, sb.boldRanges)
+  );
 }

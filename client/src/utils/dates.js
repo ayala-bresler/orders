@@ -19,6 +19,18 @@ export function toDateOnlyString(val) {
   return `${y}-${m}-${day}`;
 }
 
+/** Today's calendar date in local timezone (YYYY-MM-DD). */
+export function todayDateOnly() {
+  return toDateOnlyString(new Date());
+}
+
+/** True when iso date is strictly before today (local). Empty → false. */
+export function isDateBeforeToday(val) {
+  const iso = toDateOnlyString(val);
+  if (!iso) return false;
+  return iso < todayDateOnly();
+}
+
 /** Hebrew display date DD/MM/YYYY. */
 export function formatHebrewDate(val) {
   const iso = toDateOnlyString(val);

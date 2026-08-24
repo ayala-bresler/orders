@@ -137,14 +137,8 @@ export default function AdminBrowsePanel({
   const filteredCustomers = customers.filter((c) => {
     const q = filter.trim().toLowerCase();
     if (!q) return true;
-    return (
-      String(c.full_name || '').toLowerCase().includes(q) ||
-      String(c.phone || '').includes(q) ||
-      String(c.model_name || '').toLowerCase().includes(q) ||
-      String(c.plate_diameter || '').includes(q) ||
-      String(c.order_id || '').includes(q) ||
-      String(c.store_name || '').toLowerCase().includes(q)
-    );
+    // Manual order number only (customers.phone) — not auto order id / name / model.
+    return String(c.phone || '').toLowerCase().includes(q);
   });
 
   const filteredStores = stores.filter((s) => {
@@ -250,9 +244,9 @@ export default function AdminBrowsePanel({
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder={
-                mode === 'stores' ? 'חיפוש שם חנות' : 'שם / מספר הזמנה / דגם / חנות'
+                mode === 'stores' ? 'חיפוש שם חנות' : 'מספר הזמנה'
               }
-              aria-label={mode === 'stores' ? 'חיפוש שם חנות' : 'חיפוש הזמנות'}
+              aria-label={mode === 'stores' ? 'חיפוש שם חנות' : 'חיפוש לפי מספר הזמנה'}
             />
           </label>
 

@@ -104,6 +104,65 @@ function parseStyleLetterSpacingEm(style, fontSize) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function isBoldWeight(value) {
+  if (value == null || value === '') return false;
+  const s = String(value).trim().toLowerCase();
+  if (s === 'bold' || s === 'bolder') return true;
+  const n = parseFloat(s);
+  return Number.isFinite(n) && n >= 600;
+}
+
+/** Collect logical text + per-char bold flags from a textPath / text node. */
+function readTextRuns(node) {
+  let raw = '';
+  const rawFlags = [];
+
+  function walk(n, inheritedBold) {
+    if (!n) return;
+    if (n.nodeType === 3) {
+      const t = n.nodeValue || '';
+      raw += t;
+      for (let i = 0; i < t.length; i += 1) rawFlags.push(inheritedBold);
+      return;
+    }
+    if (n.nodeType !== 1) return;
+    const tag = n.tagName && n.tagName.toLowerCase();
+    let bold = inheritedBold;
+    if (tag === 'tspan') {
+      const fw =
+        n.getAttribute('font-weight') ||
+        parseStyleValue(n.getAttribute('style') || '', 'font-weight');
+      if (fw) bold = isBoldWeight(fw);
+      const sw = n.getAttribute('stroke-width');
+      if (sw && parseFloat(sw) > 0) bold = true;
+    }
+    for (let c = n.firstChild; c; c = c.nextSibling) walk(c, bold);
+  }
+
+  walk(node, false);
+
+  // Match legacy extract: collapse whitespace runs to a single space.
+  let text = '';
+  const boldFlags = [];
+  let prevSpace = false;
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw[i];
+    const isSpace = /\s/.test(ch);
+    if (isSpace) {
+      if (!prevSpace) {
+        text += ' ';
+        boldFlags.push(!!rawFlags[i]);
+        prevSpace = true;
+      }
+    } else {
+      text += ch;
+      boldFlags.push(!!rawFlags[i]);
+      prevSpace = false;
+    }
+  }
+  return { text, boldFlags };
+}
+
 /** Text descriptors for one <text> element (same shape as extractSvgContent texts[]). */
 function describeTextNode(node, matrix) {
   const items = [];
@@ -125,10 +184,12 @@ function describeTextNode(node, matrix) {
   if (textPaths.length) {
     for (const textPath of textPaths) {
       const pathId = hrefId(textPath);
+      const runs = readTextRuns(textPath);
       items.push({
         kind: 'textPath',
         pathId,
-        text: (textPath.textContent || '').replace(/\s+/g, ' '),
+        text: runs.text,
+        boldFlags: runs.boldFlags,
         fontSize,
         fontFamily,
         letterSpacingEm,
@@ -141,9 +202,11 @@ function describeTextNode(node, matrix) {
       });
     }
   } else {
+    const runs = readTextRuns(node);
     items.push({
       kind: 'plain',
-      text: (node.textContent || '').trim(),
+      text: runs.text.trim(),
+      boldFlags: runs.boldFlags,
       fontSize,
       fontFamily,
       letterSpacingEm,
