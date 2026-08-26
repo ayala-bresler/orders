@@ -3207,6 +3207,10 @@ html:has(.main-details) body {
   min-width: 160px;
 }
 
+.details-bottom-nav .details-nav-finish {
+  min-width: 140px;
+}
+
 .details-fields-main {
   display: flex;
   flex-direction: column;
