@@ -271,7 +271,6 @@ async function exportDxfEmailHandler(req, res, next) {
       throw err;
     }
 
-    const meta = await orderService.getOrderItemMeta(orderId, itemId);
     const details = await orderService.getOrderItemDetails(orderId, itemId);
     const { query } = require('../db');
     const { rows: modelRows } = await query(
@@ -282,12 +281,10 @@ async function exportDxfEmailHandler(req, res, next) {
     );
     const item = details?.item || {};
     const isResend = String(item.status || '').toLowerCase() === 'completed';
-    const { mainModelName, formatAccessoryLine } = require('../utils/orderItemDisplay');
-    const modelName = mainModelName(
-      { ...item, model_name: meta?.model_name, product_name: meta?.product_name },
-      modelNameByCode
-    );
-    const accessoryLine = formatAccessoryLine(item, modelNameByCode);
+    const { mainModelName, formatEmailAccessoryLine } = require('../utils/orderItemDisplay');
+    // Use live order_items fields (incl. crown_model) — not stale product meta.
+    const modelName = mainModelName(item, modelNameByCode);
+    const accessoryLine = formatEmailAccessoryLine(item, modelNameByCode);
 
     let pdfResult = null;
     let pdfWarning = null;
@@ -325,6 +322,7 @@ async function exportDxfEmailHandler(req, res, next) {
       customerName: details?.customerName || null,
       customerPhone: details?.customerPhone || null,
       modelName,
+      plateSize: item.plate_diameter ?? null,
       accessoryLine: accessoryLine || null,
       isResend,
     };
@@ -462,7 +460,6 @@ async function completeOrderHandler(req, res, next) {
       throw err;
     }
 
-    const meta = await orderService.getOrderItemMeta(orderId, itemId);
     const { rows: modelRows } = await query(
       `SELECT model_code, model_name FROM models`
     );
@@ -471,12 +468,10 @@ async function completeOrderHandler(req, res, next) {
     );
     const item = details.item || {};
     const isResend = String(item.status || '').toLowerCase() === 'completed';
-    const { mainModelName, formatAccessoryLine } = require('../utils/orderItemDisplay');
-    const modelName = mainModelName(
-      { ...item, model_name: meta?.model_name, product_name: meta?.product_name },
-      modelNameByCode
-    );
-    const accessoryLine = formatAccessoryLine(item, modelNameByCode);
+    const { mainModelName, formatEmailAccessoryLine } = require('../utils/orderItemDisplay');
+    // Use live order_items fields (incl. crown_model) — not stale product meta.
+    const modelName = mainModelName(item, modelNameByCode);
+    const accessoryLine = formatEmailAccessoryLine(item, modelNameByCode);
 
     let pdfResult = null;
     let pdfWarning = null;
@@ -506,6 +501,7 @@ async function completeOrderHandler(req, res, next) {
       customerName: details.customerName || null,
       customerPhone: details.customerPhone || null,
       modelName,
+      plateSize: item.plate_diameter ?? null,
       accessoryLine: accessoryLine || null,
       isResend,
     };

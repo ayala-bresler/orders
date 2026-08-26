@@ -310,8 +310,9 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
     resolveModelCode(fieldValue(item, 'model'), models)
     || String(item?.model || '').trim()
   );
-  // No main עץ חיים model → finish here (no verses page).
+  // Main עץ חיים + verses → next step. Crown / accessory-only (or no verses) → finish here.
   const continueToVerses = hasMainModelSelected && versesSupported;
+  const finishesOnDetails = !continueToVerses;
 
   useEffect(() => {
     onDirtyChange?.(isDirty);
@@ -695,17 +696,25 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
           )}
           <button
             type="submit"
-            className="btn primary btn-with-icon details-nav-continue"
+            className={`btn primary btn-with-icon details-nav-continue${
+              finishesOnDetails ? ' details-nav-finish' : ''
+            }`}
             disabled={saving || finishing}
+            aria-label={
+              finishesOnDetails ? 'סיום הזמנה' : 'שמירה והמשך לפסוקים'
+            }
           >
             <span>
               {saving || finishing
-                ? 'מסיים…'
-                : continueToVerses
-                  ? 'שמירה והמשך'
-                  : 'סיום הזמנה'}
+                ? finishesOnDetails
+                  ? 'מסיים…'
+                  : 'שומר…'
+                : finishesOnDetails
+                  ? 'סיום הזמנה'
+                  : 'שמירה והמשך'}
             </span>
-            <IconContinue />
+            {/* Continue chevron only when there is a next verses step */}
+            {continueToVerses ? <IconContinue /> : null}
           </button>
         </nav>
       </form>

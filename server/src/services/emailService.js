@@ -117,7 +117,7 @@ function toBase64(content) {
  * Send via Resend HTTPS API (optional fallback).
  * https://resend.com/docs/api-reference/emails/send-email
  */
-async function sendViaResend(cfg, { from, to, subject, text, attachments }) {
+async function sendViaResend(cfg, { from, to, subject, text, html, attachments }) {
   if (!cfg.resendApiKey) {
     const err = new Error('RESEND_API_KEY חסר.');
     err.status = 503;
@@ -132,22 +132,25 @@ async function sendViaResend(cfg, { from, to, subject, text, attachments }) {
     throw err;
   }
 
+  const payload = {
+    from,
+    to: [to],
+    subject,
+    text,
+    attachments: (attachments || []).map((a) => ({
+      filename: a.filename,
+      content: toBase64(a.content),
+    })),
+  };
+  if (html) payload.html = html;
+
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${cfg.resendApiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      from,
-      to: [to],
-      subject,
-      text,
-      attachments: (attachments || []).map((a) => ({
-        filename: a.filename,
-        content: toBase64(a.content),
-      })),
-    }),
+    body: JSON.stringify(payload),
   });
 
   const data = await res.json().catch(() => ({}));
@@ -191,13 +194,106 @@ function smtpTimeoutError(err) {
   return e;
 }
 
-/** Plain-text body for order emails (attachments are the primary payload). */
-function buildEmailText(meta = {}) {
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function formatPlateSize(meta = {}) {
+  const raw = meta.plateSize ?? meta.plateDiameter ?? meta.sizeLabel;
+  if (raw == null || raw === '') return '';
+  const n = Number(raw);
+  if (Number.isFinite(n) && n > 0) return String(n);
+  return String(raw).trim();
+}
+
+/** Always at least 5 regular spaces between name↔phone and model↔מידה. */
+const EMAIL_FIELD_MIN_GAP = 5;
+const EMAIL_NBSP_GAP = '&nbsp;'.repeat(EMAIL_FIELD_MIN_GAP);
+
+/**
+ * Pad two label/value pairs so the trailing values end on the same column
+ * (at least EMAIL_FIELD_MIN_GAP regular spaces in the middle).
+ */
+function alignTrailingFields(left1, right1, left2, right2, minGap = EMAIL_FIELD_MIN_GAP) {
+  const l1 = String(left1 || '');
+  const r1 = String(right1 || '');
+  const l2 = String(left2 || '');
+  const r2 = String(right2 || '');
+  const gapFloor = Math.max(5, minGap);
+  const total = Math.max(
+    l1.length + gapFloor + r1.length,
+    l2.length + gapFloor + r2.length
+  );
+  const gap1 = Math.max(gapFloor, total - l1.length - r1.length);
+  const gap2 = Math.max(gapFloor, total - l2.length - r2.length);
+  return [
+    `${l1}${' '.repeat(gap1)}${r1}`,
+    `${l2}${' '.repeat(gap2)}${r2}`,
+  ];
+}
+
+/** Keep phone / size digits in logical LTR order inside an RTL line. */
+function ltrIsolate(value) {
+  const s = String(value || '').trim();
+  if (!s) return '';
+  return `\u2066${s}\u2069`;
+}
+
+/** Force a plain-text line to render right-to-left in email clients. */
+function rtlPlainLine(line) {
+  const s = String(line || '');
+  if (!s) return '\u200F';
+  return `\u202B${s}\u202C`;
+}
+
+function buildEmailDetailLines(meta = {}) {
   const name = String(meta.customerName || '').trim();
   const phone = String(meta.customerPhone || '').trim();
   const model = String(meta.modelName || '').trim();
+  const size = formatPlateSize(meta);
   const accessories = String(meta.accessoryLine || '').trim();
-  const orderId = meta.orderId != null ? String(meta.orderId) : '';
+  const lines = [];
+
+  lines.push('פרטי הזמנה:');
+
+  const nameLeft = name ? `שם: ${name}` : phone ? 'שם:' : '';
+  const nameRight = phone ? ltrIsolate(phone) : '';
+  const modelLeft = model ? `דגם: ${model}` : size ? 'דגם:' : '';
+  const modelRight = size ? `מידה: ${ltrIsolate(size)}` : '';
+
+  if (nameLeft && nameRight && modelLeft && modelRight) {
+    lines.push(...alignTrailingFields(nameLeft, nameRight, modelLeft, modelRight));
+  } else {
+    if (nameLeft || nameRight) {
+      if (nameLeft && nameRight) {
+        lines.push(
+          `${nameLeft}${' '.repeat(EMAIL_FIELD_MIN_GAP)}${nameRight}`
+        );
+      } else {
+        lines.push(nameLeft || `שם: ${nameRight}`);
+      }
+    }
+    if (modelLeft || modelRight) {
+      if (modelLeft && modelRight) {
+        lines.push(
+          `${modelLeft}${' '.repeat(EMAIL_FIELD_MIN_GAP)}${modelRight}`
+        );
+      } else {
+        lines.push(modelLeft || modelRight);
+      }
+    }
+  }
+
+  if (accessories) lines.push(`אביזרים: ${accessories}`);
+  return lines;
+}
+
+/** Plain-text body for order emails — RTL embedding on every line. */
+function buildEmailText(meta = {}) {
   const lines = [];
 
   if (meta.isResend) {
@@ -211,14 +307,83 @@ function buildEmailText(meta = {}) {
   }
 
   lines.push('');
-  if (orderId) lines.push(`מספר הזמנה: ${orderId}`);
-  if (name) lines.push(`שם: ${name}`);
-  if (phone) lines.push(`מספר הזמנה ידני / טלפון: ${phone}`);
-  if (model) lines.push(`דגם: ${model}`);
-  if (accessories) lines.push(`אביזרים: ${accessories}`);
+  lines.push(...buildEmailDetailLines(meta));
   lines.push('');
   lines.push('נא לבדוק את הקבצים המצורפים.');
-  return lines.join('\n');
+  return lines.map(rtlPlainLine).join('\n');
+}
+
+/**
+ * HTML body — explicit RTL; trailing phone/size aligned in a compact table.
+ */
+function buildEmailHtml(meta = {}) {
+  const intro = (() => {
+    if (meta.isResend) return 'הזמנה חוזרת ממערכת ההזמנות.';
+    if (meta.kind === 'store-order-copy') return 'עותק הזמנה לחנות — מצורפים קבצי PDF.';
+    if (meta.kind === 'verses-print') return 'דף פסוקים להזמנה — מצורף PDF.';
+    return 'התקבלה הזמנה חדשה ממערכת ההזמנות — מצורף דף ההזמנה (PDF).';
+  })();
+
+  const name = String(meta.customerName || '').trim();
+  const phone = String(meta.customerPhone || '').trim();
+  const model = String(meta.modelName || '').trim();
+  const size = formatPlateSize(meta);
+  const accessories = String(meta.accessoryLine || '').trim();
+
+  const rows = [];
+  if (name || phone) {
+    rows.push(`<tr>
+        <td style="padding:2px 0;text-align:right;vertical-align:baseline;white-space:nowrap;">${
+          name ? `<strong>שם:</strong> ${escapeHtml(name)}` : '<strong>שם:</strong>'
+        }</td>
+        <td aria-hidden="true" style="padding:2px 0;width:5ch;white-space:pre;">${EMAIL_NBSP_GAP}</td>
+        <td style="padding:2px 0;text-align:left;vertical-align:baseline;white-space:nowrap;" dir="ltr">${
+          escapeHtml(phone)
+        }</td>
+      </tr>`);
+  }
+  if (model || size) {
+    rows.push(`<tr>
+        <td style="padding:2px 0;text-align:right;vertical-align:baseline;white-space:nowrap;">${
+          model ? `<strong>דגם:</strong> ${escapeHtml(model)}` : '<strong>דגם:</strong>'
+        }</td>
+        <td aria-hidden="true" style="padding:2px 0;width:5ch;white-space:pre;">${EMAIL_NBSP_GAP}</td>
+        <td style="padding:2px 0;text-align:left;vertical-align:baseline;white-space:nowrap;">${
+          size
+            ? `<strong>מידה:</strong> <span dir="ltr" style="unicode-bidi:isolate;">${escapeHtml(size)}</span>`
+            : ''
+        }</td>
+      </tr>`);
+  }
+
+  return `<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body dir="rtl" style="margin:0;padding:16px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.55;color:#222;direction:rtl;text-align:right;unicode-bidi:embed;">
+  <div dir="rtl" style="direction:rtl;text-align:right;">
+    <p style="margin:0 0 14px;font-size:16px;direction:rtl;text-align:right;">${escapeHtml(intro)}</p>
+    <div style="font-size:17px;direction:rtl;text-align:right;">
+      <div style="font-weight:700;font-size:18px;margin-bottom:8px;">פרטי הזמנה:</div>
+      ${
+        rows.length
+          ? `<table dir="rtl" cellpadding="0" cellspacing="0" style="border-collapse:collapse;direction:rtl;">
+      ${rows.join('\n      ')}
+    </table>`
+          : ''
+      }
+      ${
+        accessories
+          ? `<div dir="rtl" style="margin-top:6px;"><strong>אביזרים:</strong> ${escapeHtml(accessories)}</div>`
+          : ''
+      }
+    </div>
+    <p style="margin:16px 0 0;font-size:16px;direction:rtl;text-align:right;">נא לבדוק את הקבצים המצורפים.</p>
+  </div>
+</body>
+</html>`;
 }
 
 function buildEmailSubject(meta = {}) {
@@ -278,11 +443,13 @@ async function sendDxfEmail(opts) {
   }
 
   const attachments = buildAttachments(opts);
+  const mailMeta = opts.meta || {};
   const mail = {
     from: cfg.from,
     to: cfg.recipient,
-    subject: buildEmailSubject(opts.meta || {}),
-    text: buildEmailText(opts.meta || {}),
+    subject: buildEmailSubject(mailMeta),
+    text: buildEmailText(mailMeta),
+    html: buildEmailHtml(mailMeta),
     attachments,
   };
 
@@ -378,6 +545,7 @@ async function sendPdfToAddress({ to, pdfFilename, pdfContent, pdfFiles, meta })
     to: recipient,
     subject: buildEmailSubject(meta || {}),
     text: buildEmailText(meta || {}),
+    html: buildEmailHtml(meta || {}),
     attachments,
   };
 
@@ -411,5 +579,6 @@ module.exports = {
   verifySmtp,
   getConfig,
   buildEmailText,
+  buildEmailHtml,
   buildEmailSubject,
 };
