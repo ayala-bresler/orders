@@ -253,8 +253,11 @@ function rtlPlainLine(line) {
 function buildEmailDetailLines(meta = {}) {
   const name = String(meta.customerName || '').trim();
   const phone = String(meta.customerPhone || '').trim();
+  // PDF «דגם» field — only when a main model exists (never accessory fallback / "—").
   const model = String(meta.modelName || '').trim();
-  const size = formatPlateSize(meta);
+  const hasModel = Boolean(model);
+  // No model → never show מידה (even if plate_diameter is set on the item).
+  const size = hasModel ? formatPlateSize(meta) : '';
   const accessories = String(meta.accessoryLine || '').trim();
   const lines = [];
 
@@ -262,8 +265,8 @@ function buildEmailDetailLines(meta = {}) {
 
   const nameLeft = name ? `שם: ${name}` : phone ? 'שם:' : '';
   const nameRight = phone ? ltrIsolate(phone) : '';
-  const modelLeft = model ? `דגם: ${model}` : size ? 'דגם:' : '';
-  const modelRight = size ? `מידה: ${ltrIsolate(size)}` : '';
+  const modelLeft = hasModel ? `דגם: ${model}` : '';
+  const modelRight = hasModel && size ? `מידה: ${ltrIsolate(size)}` : '';
 
   if (nameLeft && nameRight && modelLeft && modelRight) {
     lines.push(...alignTrailingFields(nameLeft, nameRight, modelLeft, modelRight));
@@ -277,13 +280,13 @@ function buildEmailDetailLines(meta = {}) {
         lines.push(nameLeft || `שם: ${nameRight}`);
       }
     }
-    if (modelLeft || modelRight) {
-      if (modelLeft && modelRight) {
+    if (modelLeft) {
+      if (modelRight) {
         lines.push(
           `${modelLeft}${' '.repeat(EMAIL_FIELD_MIN_GAP)}${modelRight}`
         );
       } else {
-        lines.push(modelLeft || modelRight);
+        lines.push(modelLeft);
       }
     }
   }
@@ -327,7 +330,8 @@ function buildEmailHtml(meta = {}) {
   const name = String(meta.customerName || '').trim();
   const phone = String(meta.customerPhone || '').trim();
   const model = String(meta.modelName || '').trim();
-  const size = formatPlateSize(meta);
+  const hasModel = Boolean(model);
+  const size = hasModel ? formatPlateSize(meta) : '';
   const accessories = String(meta.accessoryLine || '').trim();
 
   const rows = [];
@@ -342,11 +346,11 @@ function buildEmailHtml(meta = {}) {
         }</td>
       </tr>`);
   }
-  if (model || size) {
+  if (hasModel) {
     rows.push(`<tr>
-        <td style="padding:2px 0;text-align:right;vertical-align:baseline;white-space:nowrap;">${
-          model ? `<strong>דגם:</strong> ${escapeHtml(model)}` : '<strong>דגם:</strong>'
-        }</td>
+        <td style="padding:2px 0;text-align:right;vertical-align:baseline;white-space:nowrap;">
+          <strong>דגם:</strong> ${escapeHtml(model)}
+        </td>
         <td aria-hidden="true" style="padding:2px 0;width:5ch;white-space:pre;">${EMAIL_NBSP_GAP}</td>
         <td style="padding:2px 0;text-align:left;vertical-align:baseline;white-space:nowrap;">${
           size

@@ -281,8 +281,8 @@ async function exportDxfEmailHandler(req, res, next) {
     );
     const item = details?.item || {};
     const isResend = String(item.status || '').toLowerCase() === 'completed';
-    const { mainModelName, formatEmailAccessoryLine } = require('../utils/orderItemDisplay');
-    // Use live order_items fields (incl. crown_model) — not stale product meta.
+    const { mainModelName, formatEmailAccessoryLine, hasMainModel } = require('../utils/orderItemDisplay');
+    // Use live order_items fields — model = PDF דגם (main only); accessories match PDF checks.
     const modelName = mainModelName(item, modelNameByCode);
     const accessoryLine = formatEmailAccessoryLine(item, modelNameByCode);
 
@@ -321,8 +321,9 @@ async function exportDxfEmailHandler(req, res, next) {
       orderId,
       customerName: details?.customerName || null,
       customerPhone: details?.customerPhone || null,
-      modelName,
-      plateSize: item.plate_diameter ?? null,
+      modelName: modelName || null,
+      // Size only with a main model (matches email rule / PDF דגם presence).
+      plateSize: hasMainModel(item) ? (item.plate_diameter ?? null) : null,
       accessoryLine: accessoryLine || null,
       isResend,
     };
@@ -468,8 +469,8 @@ async function completeOrderHandler(req, res, next) {
     );
     const item = details.item || {};
     const isResend = String(item.status || '').toLowerCase() === 'completed';
-    const { mainModelName, formatEmailAccessoryLine } = require('../utils/orderItemDisplay');
-    // Use live order_items fields (incl. crown_model) — not stale product meta.
+    const { mainModelName, formatEmailAccessoryLine, hasMainModel } = require('../utils/orderItemDisplay');
+    // Use live order_items fields — model = PDF דגם (main only); accessories match PDF checks.
     const modelName = mainModelName(item, modelNameByCode);
     const accessoryLine = formatEmailAccessoryLine(item, modelNameByCode);
 
@@ -500,8 +501,8 @@ async function completeOrderHandler(req, res, next) {
       orderId,
       customerName: details.customerName || null,
       customerPhone: details.customerPhone || null,
-      modelName,
-      plateSize: item.plate_diameter ?? null,
+      modelName: modelName || null,
+      plateSize: hasMainModel(item) ? (item.plate_diameter ?? null) : null,
       accessoryLine: accessoryLine || null,
       isResend,
     };

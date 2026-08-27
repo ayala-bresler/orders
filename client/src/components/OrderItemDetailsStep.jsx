@@ -253,6 +253,9 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
       } else if (hasKey && checked && modelKey) {
         const cur = resolveModelCode(i[modelKey], models);
         if (!cur) next[modelKey] = mainCode || resolveModelCode(i.model, models) || null;
+      } else if (hasKey && checked === false && modelKey) {
+        // Uncheck → clear stale model so email/PDF follow live selection.
+        next[modelKey] = null;
       }
       return next;
     });
@@ -284,6 +287,10 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
     if (out.has_crown && !out.crown_model && main) out.crown_model = main;
     if (out.has_breastplate && !out.breastplate_model && main) out.breastplate_model = main;
     if (out.has_pointer && !out.pointer_model && main) out.pointer_model = main;
+    // Persist only live checks — drop leftover model codes when unchecked.
+    if (out.has_crown !== true) out.crown_model = null;
+    if (out.has_breastplate !== true) out.breastplate_model = null;
+    if (out.has_pointer !== true) out.pointer_model = null;
     return out;
   };
 
@@ -369,16 +376,8 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
         price_at_purchase: item.price_at_purchase === '' || item.price_at_purchase == null ? 0 : item.price_at_purchase,
       });
       const mainCode = resolveModelCode(payloadPreview.model, models) || String(payloadPreview.model || '').trim();
-      if (!mainCode) {
-        const hasAccessory = Boolean(
-          payloadPreview.has_crown || payloadPreview.has_breastplate || payloadPreview.has_pointer
-        );
-        if (!hasAccessory) {
-          setError('יש לבחור דגם ראשי לעץ חיים, או לפחות כתר / טס / יד לפני סיום ההזמנה.');
-          return null;
-        }
-      }
 
+      // No עץ חיים → finish on this page (crown / accessories / empty product OK).
       const willFinishHere = !(Boolean(mainCode) && versesSupported);
       if (willFinishHere) setFinishing(true);
 
@@ -443,7 +442,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
 
   const hasStones = item.has_stones === true;
   const detailsTitle = (() => {
-    if (hasMainModelSelected) return 'פרטי עץ חיים';
+    if (hasMainModelSelected) return 'פרטי הזמנה';
     if (item.has_crown) return 'פרטי כתר';
     if (item.has_breastplate) return 'פרטי טס';
     if (item.has_pointer) return 'פרטי יד';

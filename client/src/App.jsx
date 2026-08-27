@@ -44,7 +44,7 @@ const MOBILE_STEP_PAIR_LATE = ['details', 'editor'];
 const STEP_LABELS = {
   identify: 'הזדהות',
   product: 'בחירת דגם',
-  details: 'פרטי עץ חיים',
+  details: 'פרטי הזמנה',
   editor: 'פסוקים לעצי חיים',
 };
 

@@ -24,8 +24,8 @@ function primaryAccessory(item, nameByCode = {}) {
   ];
   for (const { hasKey, codeKey, label } of specs) {
     const code = String(item[codeKey] || '').trim();
-    const checked = item[hasKey] === true || Boolean(code);
-    if (!checked || !code) continue;
+    // Strict live checkbox — ignore leftover model codes when unchecked.
+    if (item[hasKey] !== true || !code) continue;
     const name = nameForCode(code, nameByCode);
     if (!name) continue;
     return { label, name, code };
@@ -55,9 +55,20 @@ function formatAccessoryLine(item, nameByCode = {}) {
 }
 
 /**
- * Accessories line for email body only.
- * Same-model accessories: label only (עץ חיים, טס, …).
- * Different model: "יד- שעונים", "כתר- מיוחד".
+ * Model name for email / PDF «דגם» field — main עץ חיים only.
+ * No accessory fallback; empty when no main model (crown-only / blank order).
+ */
+function mainModelName(item, nameByCode = {}) {
+  if (!hasMainModel(item)) return '';
+  const code = String(item.model || item.model_code || '').trim();
+  return nameForCode(code, nameByCode, item.model_name) || '';
+}
+
+/**
+ * Accessories line for email body — only currently checked accessories
+ * (same rule as the order-form PDF: has_crown / has_breastplate / has_pointer).
+ * Stale *_model values from a previous selection are ignored when unchecked.
+ * Same-model accessories: label only. Different model: "כתר- מיוחד".
  */
 function formatEmailAccessoryLine(item, nameByCode = {}) {
   if (!item) return '';
@@ -66,7 +77,6 @@ function formatEmailAccessoryLine(item, nameByCode = {}) {
 
   if (mainCode) parts.push('עץ חיים');
 
-  const refCode = mainCode || primaryAccessory(item, nameByCode)?.code || '';
   const specs = [
     { hasKey: 'has_crown', codeKey: 'crown_model', label: 'כתר' },
     { hasKey: 'has_breastplate', codeKey: 'breastplate_model', label: 'טס' },
@@ -74,17 +84,18 @@ function formatEmailAccessoryLine(item, nameByCode = {}) {
   ];
 
   for (const { hasKey, codeKey, label } of specs) {
-    const code = String(item[codeKey] || '').trim();
-    const checked = item[hasKey] === true || Boolean(code);
-    if (!checked) continue;
+    // Strict: only the live checkbox — do not infer from leftover model codes.
+    if (item[hasKey] !== true) continue;
 
+    const code = String(item[codeKey] || '').trim();
     const effectiveCode = code || mainCode;
-    if (!effectiveCode) {
+
+    if (mainCode && effectiveCode && effectiveCode === mainCode) {
       parts.push(label);
       continue;
     }
 
-    if (refCode && effectiveCode === refCode) {
+    if (!effectiveCode) {
       parts.push(label);
       continue;
     }
@@ -94,24 +105,6 @@ function formatEmailAccessoryLine(item, nameByCode = {}) {
   }
 
   return parts.join(', ');
-}
-
-/**
- * Model name for email body — identical to the order-form PDF field:
- * lookup by model_code in `models.model_name`, with no string chopping.
- * Crown / accessory-only orders use that accessory's selected model code.
- */
-function mainModelName(item, nameByCode = {}) {
-  if (hasMainModel(item)) {
-    const code = String(item.model || item.model_code || '').trim();
-    return nameForCode(code, nameByCode, item.model_name) || '—';
-  }
-
-  const acc = primaryAccessory(item, nameByCode);
-  if (acc?.name) return acc.name;
-
-  const fallback = String(item?.model_name || '').trim();
-  return fallback || '—';
 }
 
 module.exports = {
