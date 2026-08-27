@@ -373,6 +373,10 @@ function normalizeItemForSave(item) {
   if (out.model && isCrownOnlyPlateSize(out)) {
     out.model = null;
   }
+  // Drop stale accessory model codes when the checkbox is off (live selection).
+  if (out.has_crown !== true) out.crown_model = null;
+  if (out.has_breastplate !== true) out.breastplate_model = null;
+  if (out.has_pointer !== true) out.pointer_model = null;
   return out;
 }
 

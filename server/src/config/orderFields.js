@@ -134,13 +134,12 @@ function hasAccessorySelection(item) {
 }
 
 /**
- * Without a main עץ חיים model, at least one accessory (כתר / טס / יד) is required.
- * @returns {string|null} Hebrew error message, or null when valid.
+ * Previously required main עץ חיים or at least one accessory.
+ * Orders may now complete with no product/model selection.
+ * @returns {null}
  */
-function assertMainOrAccessory(item) {
-  if (hasMainModel(item)) return null;
-  if (hasAccessorySelection(item)) return null;
-  return 'יש לבחור דגם ראשי לעץ חיים, או לפחות כתר / טס / יד לפני סיום ההזמנה.';
+function assertMainOrAccessory() {
+  return null;
 }
 
 module.exports = {
