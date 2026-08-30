@@ -4,12 +4,14 @@ export function hasMainModel(item) {
 }
 
 /**
- * First selected accessory (כתר / טס / יד) — used when there is no main model.
+ * First selected accessory (כתר / כתר-רימונים / רימונים / טס / יד) — used when there is no main model.
  */
 export function primaryAccessory(item) {
   if (!item) return null;
   const specs = [
     { hasKey: 'has_crown', codeKey: 'crown_model', nameKey: 'crown_model_name', label: 'כתר' },
+    { hasKey: 'has_crown_rimmonim', codeKey: 'crown_rimmonim_model', nameKey: 'crown_rimmonim_model_name', label: 'כתר-רימונים' },
+    { hasKey: 'has_rimmonim', codeKey: 'rimmonim_model', nameKey: 'rimmonim_model_name', label: 'רימונים' },
     { hasKey: 'has_breastplate', codeKey: 'breastplate_model', nameKey: 'breastplate_model_name', label: 'טס' },
     { hasKey: 'has_pointer', codeKey: 'pointer_model', nameKey: 'pointer_model_name', label: 'יד' },
   ];
@@ -34,7 +36,7 @@ export function formatItemPlateDiameter(item) {
 
 /**
  * Primary display name for an order line.
- * With עץ חיים: model name. Without: "כתר · {name}" (or טס/יד) — never bare "עץ חיים".
+ * With עץ חיים: model name. Without: "כתר · {name}" (or other accessory) — never bare "עץ חיים".
  * Always appends plate diameter when set (also for כתר-only orders).
  */
 export function mainModelName(item) {
@@ -55,7 +57,7 @@ export function mainModelName(item) {
   return base;
 }
 
-/** Model code used for product photos (crown/tas/yad when no main). */
+/** Model code used for product photos (crown/rimmonim/tas/yad when no main). */
 export function orderItemImageModelCode(item) {
   if (hasMainModel(item)) {
     return String(item.model_code || item.model || '').trim();
@@ -73,6 +75,8 @@ export function formatAccessoryLine(item) {
   const primary = !mainCode ? primaryAccessory(item) : null;
   const specs = [
     { codeKey: 'crown_model', nameKey: 'crown_model_name', label: 'כתר' },
+    { codeKey: 'crown_rimmonim_model', nameKey: 'crown_rimmonim_model_name', label: 'כתר-רימונים' },
+    { codeKey: 'rimmonim_model', nameKey: 'rimmonim_model_name', label: 'רימונים' },
     { codeKey: 'breastplate_model', nameKey: 'breastplate_model_name', label: 'טס' },
     { codeKey: 'pointer_model', nameKey: 'pointer_model_name', label: 'יד' },
   ];

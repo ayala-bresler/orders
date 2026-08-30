@@ -26,6 +26,10 @@ const ITEM_DETAIL_FIELDS = [
   { key: 'stones_color', label: 'צבע אבנים', type: 'text' },
   { key: 'has_crown', label: 'כתר', type: 'boolean' },
   { key: 'crown_model', label: 'דגם כתר', type: 'text' },
+  { key: 'has_crown_rimmonim', label: 'כתר-רימונים', type: 'boolean' },
+  { key: 'crown_rimmonim_model', label: 'דגם כתר-רימונים', type: 'text' },
+  { key: 'has_rimmonim', label: 'רימונים', type: 'boolean' },
+  { key: 'rimmonim_model', label: 'דגם רימונים', type: 'text' },
   { key: 'has_breastplate', label: 'טס', type: 'boolean' },
   { key: 'breastplate_model', label: 'דגם טס', type: 'text' },
   { key: 'has_pointer', label: 'יד', type: 'boolean' },
@@ -79,8 +83,10 @@ function hasItemManufacturingData(item) {
     'customer_notes', 'model', 'size_code',
     'parchment_diameter', 'plate_diameter', 'parchment_height',
     'parochet_height',
-    'has_stones', 'has_crown', 'has_breastplate', 'has_pointer',
-    'stones_color', 'crown_model', 'breastplate_model', 'pointer_model',
+    'has_stones', 'has_crown', 'has_crown_rimmonim', 'has_rimmonim',
+    'has_breastplate', 'has_pointer',
+    'stones_color', 'crown_model', 'crown_rimmonim_model', 'rimmonim_model',
+    'breastplate_model', 'pointer_model',
   ];
   return signalKeys.some((key) => {
     const val = item[key];
@@ -130,7 +136,13 @@ function hasMainModel(item) {
 
 /** Crown / טס / יד checkbox selected. */
 function hasAccessorySelection(item) {
-  return Boolean(item?.has_crown || item?.has_breastplate || item?.has_pointer);
+  return Boolean(
+    item?.has_crown
+    || item?.has_crown_rimmonim
+    || item?.has_rimmonim
+    || item?.has_breastplate
+    || item?.has_pointer
+  );
 }
 
 /**

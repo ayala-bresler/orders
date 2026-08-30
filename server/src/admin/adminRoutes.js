@@ -199,6 +199,8 @@ router.get('/customers', requireAdminSession, async (req, res, next) => {
               COALESCE(
                 NULLIF(BTRIM(m.model_name), ''),
                 CASE WHEN oi.has_crown THEN NULLIF(BTRIM(cm.model_name), '') END,
+                CASE WHEN oi.has_crown_rimmonim THEN NULLIF(BTRIM(crm.model_name), '') END,
+                CASE WHEN oi.has_rimmonim THEN NULLIF(BTRIM(rm.model_name), '') END,
                 CASE WHEN oi.has_breastplate THEN NULLIF(BTRIM(bm.model_name), '') END,
                 CASE WHEN oi.has_pointer THEN NULLIF(BTRIM(pm.model_name), '') END
               ) AS model_name,
@@ -216,6 +218,8 @@ router.get('/customers', requireAdminSession, async (req, res, next) => {
            SELECT oi.model,
                   oi.plate_diameter,
                   oi.has_crown, oi.crown_model,
+                  oi.has_crown_rimmonim, oi.crown_rimmonim_model,
+                  oi.has_rimmonim, oi.rimmonim_model,
                   oi.has_breastplate, oi.breastplate_model,
                   oi.has_pointer, oi.pointer_model
              FROM order_items oi
@@ -225,6 +229,8 @@ router.get('/customers', requireAdminSession, async (req, res, next) => {
          ) oi ON TRUE
          LEFT JOIN models m ON m.model_code = oi.model
          LEFT JOIN models cm ON cm.model_code = oi.crown_model
+         LEFT JOIN models crm ON crm.model_code = oi.crown_rimmonim_model
+         LEFT JOIN models rm ON rm.model_code = oi.rimmonim_model
          LEFT JOIN models bm ON bm.model_code = oi.breastplate_model
          LEFT JOIN models pm ON pm.model_code = oi.pointer_model
          ${where}

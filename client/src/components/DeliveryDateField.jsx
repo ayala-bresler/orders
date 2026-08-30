@@ -83,7 +83,6 @@ export default function DeliveryDateField({
   });
 
   const minIso = todayDateOnly();
-  const pastSelected = Boolean(iso && isDateBeforeToday(iso));
 
   useEffect(() => {
     if (!open) return;
@@ -152,7 +151,7 @@ export default function DeliveryDateField({
     setOpen(false);
   };
 
-  const showError = error || (pastSelected ? 'תאריך אספקה לא יכול להיות בעבר — יש לבחור מהיום והלאה.' : '');
+  const showError = error || '';
 
   return (
     <div className={`date-field${open ? ' is-open' : ''}${showError ? ' has-error' : ''}`} ref={wrapRef}>

@@ -274,7 +274,13 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
     if (out.model && isCrownOnlyPlateSize(out)) {
       out.model = null;
     }
-    for (const key of ['crown_model', 'breastplate_model', 'pointer_model']) {
+    for (const key of [
+      'crown_model',
+      'crown_rimmonim_model',
+      'rimmonim_model',
+      'breastplate_model',
+      'pointer_model',
+    ]) {
       if (out[key]) out[key] = resolveModelCode(out[key], models) || out[key];
     }
     // טס / יד cannot keep a crown-only model code (09); מיוחד (10) is allowed.
@@ -285,10 +291,16 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
     }
     const main = out.model;
     if (out.has_crown && !out.crown_model && main) out.crown_model = main;
+    if (out.has_crown_rimmonim && !out.crown_rimmonim_model && main) {
+      out.crown_rimmonim_model = main;
+    }
+    if (out.has_rimmonim && !out.rimmonim_model && main) out.rimmonim_model = main;
     if (out.has_breastplate && !out.breastplate_model && main) out.breastplate_model = main;
     if (out.has_pointer && !out.pointer_model && main) out.pointer_model = main;
     // Persist only live checks — drop leftover model codes when unchecked.
     if (out.has_crown !== true) out.crown_model = null;
+    if (out.has_crown_rimmonim !== true) out.crown_rimmonim_model = null;
+    if (out.has_rimmonim !== true) out.rimmonim_model = null;
     if (out.has_breastplate !== true) out.breastplate_model = null;
     if (out.has_pointer !== true) out.pointer_model = null;
     return out;
@@ -441,13 +453,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
   const size16Selected = isCrownOnlyPlateSize(item);
 
   const hasStones = item.has_stones === true;
-  const detailsTitle = (() => {
-    if (hasMainModelSelected) return 'פרטי הזמנה';
-    if (item.has_crown) return 'פרטי כתר';
-    if (item.has_breastplate) return 'פרטי טס';
-    if (item.has_pointer) return 'פרטי יד';
-    return 'פרטי הזמנה';
-  })();
+  const detailsTitle = 'פרטי הזמנה';
 
   return (
     <div className={`card details-step${orderSent ? ' details-step--sent' : ''}`}>
@@ -555,6 +561,46 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
                     />
                   </InlineField>
                 </div>
+
+                <div className="details-row details-row-stones">
+                  <div className="details-inline-field details-stones-field">
+                    <span className="details-inline-label">אבנים:</span>
+                    <span className="details-inline-control details-stones-control">
+                      <label className="details-check-label details-check-inline">
+                        <input
+                          type="checkbox"
+                          checked={hasStones}
+                          onChange={(e) => changeItem('has_stones', e.target.checked)}
+                          aria-label="יש אבנים"
+                        />
+                      </label>
+                      {hasStones ? (
+                        <input
+                          className="bidi-input"
+                          dir={detectTextDir(fieldValue(item, 'stones_color'))}
+                          type="text"
+                          value={fieldValue(item, 'stones_color')}
+                          onChange={(e) => changeItem('stones_color', e.target.value)}
+                          aria-label="צבע אבנים"
+                          placeholder="צבע"
+                        />
+                      ) : (
+                        <span className="details-stones-input-spacer" aria-hidden="true" />
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="details-row details-row-delivery">
+                  <InlineField label="תאריך אספקה:" className="details-delivery-field">
+                    <DeliveryDateField
+                      className="details-delivery-input"
+                      value={order.estimated_delivery_date}
+                      onChange={(val) => changeOrder('estimated_delivery_date', val)}
+                      ariaLabel="תאריך אספקה (אופציונלי)"
+                    />
+                  </InlineField>
+                </div>
               </section>
 
               <aside className="details-accessories-col" aria-label="אביזרים">
@@ -562,6 +608,26 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
                   label="כתר"
                   modelKey="crown_model"
                   hasKey="has_crown"
+                  item={item}
+                  models={models}
+                  modelOptions={crownModels}
+                  mainModelCode={mainModelCode}
+                  onAccessoryChange={changeAccessory}
+                />
+                <AccessoryRow
+                  label="כתר-רימונים"
+                  modelKey="crown_rimmonim_model"
+                  hasKey="has_crown_rimmonim"
+                  item={item}
+                  models={models}
+                  modelOptions={crownModels}
+                  mainModelCode={mainModelCode}
+                  onAccessoryChange={changeAccessory}
+                />
+                <AccessoryRow
+                  label="רימונים"
+                  modelKey="rimmonim_model"
+                  hasKey="has_rimmonim"
                   item={item}
                   models={models}
                   modelOptions={crownModels}
@@ -589,46 +655,6 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
                   onAccessoryChange={changeAccessory}
                 />
               </aside>
-
-              <div className="details-stones-slot" aria-label="אבנים">
-                <div className="details-inline-field details-stones-field">
-                  <span className="details-inline-label">אבנים:</span>
-                  <span className="details-inline-control details-stones-control">
-                    <label className="details-check-label details-check-inline">
-                      <input
-                        type="checkbox"
-                        checked={hasStones}
-                        onChange={(e) => changeItem('has_stones', e.target.checked)}
-                        aria-label="יש אבנים"
-                      />
-                    </label>
-                    {hasStones ? (
-                      <input
-                        className="bidi-input"
-                        dir={detectTextDir(fieldValue(item, 'stones_color'))}
-                        type="text"
-                        value={fieldValue(item, 'stones_color')}
-                        onChange={(e) => changeItem('stones_color', e.target.value)}
-                        aria-label="צבע אבנים"
-                        placeholder="צבע"
-                      />
-                    ) : (
-                      <span className="details-stones-input-spacer" aria-hidden="true" />
-                    )}
-                  </span>
-                </div>
-              </div>
-
-              <div className="details-delivery-slot">
-                <InlineField label="תאריך אספקה:" className="details-delivery-field">
-                  <DeliveryDateField
-                    className="details-delivery-input"
-                    value={order.estimated_delivery_date}
-                    onChange={(val) => changeOrder('estimated_delivery_date', val)}
-                    ariaLabel="תאריך אספקה (אופציונלי)"
-                  />
-                </InlineField>
-              </div>
             </div>
 
             <div className={`details-bottom-split${!hasMainModelSelected ? ' details-bottom-split--notes-only' : ''}`}>

@@ -236,9 +236,15 @@ CREATE TABLE IF NOT EXISTS order_items (
     has_stones          BOOLEAN         NULL DEFAULT FALSE,
     stones_color        VARCHAR(50)     NULL,
     has_crown           BOOLEAN         NULL DEFAULT FALSE,
+    has_crown_rimmonim  BOOLEAN         NULL DEFAULT FALSE,
+    has_rimmonim        BOOLEAN         NULL DEFAULT FALSE,
     has_breastplate     BOOLEAN         NULL DEFAULT FALSE,
     has_pointer         BOOLEAN         NULL DEFAULT FALSE,
     crown_model         VARCHAR(10)     NULL
+        REFERENCES models (model_code) ON DELETE SET NULL,
+    crown_rimmonim_model VARCHAR(10)    NULL
+        REFERENCES models (model_code) ON DELETE SET NULL,
+    rimmonim_model      VARCHAR(10)     NULL
         REFERENCES models (model_code) ON DELETE SET NULL,
     breastplate_model   VARCHAR(10)     NULL
         REFERENCES models (model_code) ON DELETE SET NULL,
@@ -277,6 +283,10 @@ ALTER TABLE order_items ADD COLUMN IF NOT EXISTS verse_font_scales   JSONB;
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS crown_model         VARCHAR(10);
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS breastplate_model   VARCHAR(10);
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS pointer_model       VARCHAR(10);
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS has_crown_rimmonim  BOOLEAN DEFAULT FALSE;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS crown_rimmonim_model VARCHAR(10);
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS has_rimmonim        BOOLEAN DEFAULT FALSE;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS rimmonim_model      VARCHAR(10);
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS size_code           TEXT;
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_type_code   VARCHAR(10);
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS status              VARCHAR(20);
@@ -286,3 +296,13 @@ ALTER TABLE order_items ALTER COLUMN status SET NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items (order_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_status ON order_items (order_id, status);
+
+-- Accessory product types (orderable via order_items has_* / *_model columns).
+INSERT INTO product_types (product_type_code, type_name)
+SELECT v.product_type_code, v.type_name
+FROM (VALUES
+    ('CRM', 'כתר-רימונים'),
+    ('RM',  'רימונים')
+) AS v(product_type_code, type_name)
+WHERE NOT EXISTS (SELECT 1 FROM product_types pt WHERE pt.type_name = v.type_name)
+  AND NOT EXISTS (SELECT 1 FROM product_types pt WHERE pt.product_type_code = v.product_type_code);
