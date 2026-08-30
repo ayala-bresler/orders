@@ -12,17 +12,20 @@ function nameForCode(code, nameByCode = {}, fallback = '') {
   return String(fallback || c).trim();
 }
 
+const ACCESSORY_SPECS = [
+  { hasKey: 'has_crown', codeKey: 'crown_model', label: 'כתר' },
+  { hasKey: 'has_crown_rimmonim', codeKey: 'crown_rimmonim_model', label: 'כתר-רימונים' },
+  { hasKey: 'has_rimmonim', codeKey: 'rimmonim_model', label: 'רימונים' },
+  { hasKey: 'has_breastplate', codeKey: 'breastplate_model', label: 'טס' },
+  { hasKey: 'has_pointer', codeKey: 'pointer_model', label: 'יד' },
+];
+
 /**
- * First selected accessory (כתר / טס / יד) when there is no main עץ חיים model.
+ * First selected accessory when there is no main עץ חיים model.
  */
 function primaryAccessory(item, nameByCode = {}) {
   if (!item) return null;
-  const specs = [
-    { hasKey: 'has_crown', codeKey: 'crown_model', label: 'כתר' },
-    { hasKey: 'has_breastplate', codeKey: 'breastplate_model', label: 'טס' },
-    { hasKey: 'has_pointer', codeKey: 'pointer_model', label: 'יד' },
-  ];
-  for (const { hasKey, codeKey, label } of specs) {
+  for (const { hasKey, codeKey, label } of ACCESSORY_SPECS) {
     const code = String(item[codeKey] || '').trim();
     // Strict live checkbox — ignore leftover model codes when unchecked.
     if (item[hasKey] !== true || !code) continue;
@@ -37,14 +40,10 @@ function formatAccessoryLine(item, nameByCode = {}) {
   if (!item) return '';
   const mainCode = String(item.model_code || item.model || '').trim();
   const primary = !mainCode ? primaryAccessory(item, nameByCode) : null;
-  const specs = [
-    { codeKey: 'crown_model', label: 'כתר' },
-    { codeKey: 'breastplate_model', label: 'טס' },
-    { codeKey: 'pointer_model', label: 'יד' },
-  ];
 
   const parts = [];
-  for (const { codeKey, label } of specs) {
+  for (const { hasKey, codeKey, label } of ACCESSORY_SPECS) {
+    if (item[hasKey] !== true) continue;
     const code = String(item[codeKey] || '').trim();
     if (!code || (mainCode && code === mainCode)) continue;
     if (primary && primary.code && code === primary.code) continue;
@@ -65,9 +64,7 @@ function mainModelName(item, nameByCode = {}) {
 }
 
 /**
- * Accessories line for email body — only currently checked accessories
- * (same rule as the order-form PDF: has_crown / has_breastplate / has_pointer).
- * Stale *_model values from a previous selection are ignored when unchecked.
+ * Accessories line for email body — only currently checked accessories.
  * Same-model accessories: label only. Different model: "כתר- מיוחד".
  */
 function formatEmailAccessoryLine(item, nameByCode = {}) {
@@ -77,14 +74,7 @@ function formatEmailAccessoryLine(item, nameByCode = {}) {
 
   if (mainCode) parts.push('עץ חיים');
 
-  const specs = [
-    { hasKey: 'has_crown', codeKey: 'crown_model', label: 'כתר' },
-    { hasKey: 'has_breastplate', codeKey: 'breastplate_model', label: 'טס' },
-    { hasKey: 'has_pointer', codeKey: 'pointer_model', label: 'יד' },
-  ];
-
-  for (const { hasKey, codeKey, label } of specs) {
-    // Strict: only the live checkbox — do not infer from leftover model codes.
+  for (const { hasKey, codeKey, label } of ACCESSORY_SPECS) {
     if (item[hasKey] !== true) continue;
 
     const code = String(item[codeKey] || '').trim();

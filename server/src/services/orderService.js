@@ -335,7 +335,7 @@ function parseIncomingValue(key, raw) {
     const n = Number(raw);
     return Number.isFinite(n) ? n : null;
   }
-  if (['has_stones', 'has_crown', 'has_breastplate', 'has_pointer'].includes(key)) {
+  if (['has_stones', 'has_crown', 'has_crown_rimmonim', 'has_rimmonim', 'has_breastplate', 'has_pointer'].includes(key)) {
     if (raw === true || raw === 'true' || raw === 1 || raw === '1') return true;
     if (raw === false || raw === 'false' || raw === 0 || raw === '0') return false;
     return null;
@@ -375,6 +375,8 @@ function normalizeItemForSave(item) {
   }
   // Drop stale accessory model codes when the checkbox is off (live selection).
   if (out.has_crown !== true) out.crown_model = null;
+  if (out.has_crown_rimmonim !== true) out.crown_rimmonim_model = null;
+  if (out.has_rimmonim !== true) out.rimmonim_model = null;
   if (out.has_breastplate !== true) out.breastplate_model = null;
   if (out.has_pointer !== true) out.pointer_model = null;
   return out;

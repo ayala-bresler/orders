@@ -17,6 +17,18 @@ INSERT INTO product_types (product_type_code, type_name)
 SELECT 'EC', 'עץ חיים'
 WHERE NOT EXISTS (SELECT 1 FROM product_types WHERE type_name = 'עץ חיים');
 
+INSERT INTO product_types (product_type_code, type_name)
+SELECT v.product_type_code, v.type_name
+FROM (VALUES
+    ('CR', 'כתר'),
+    ('CRM', 'כתר-רימונים'),
+    ('RM', 'רימונים'),
+    ('BP', 'טס'),
+    ('PT', 'יד')
+) AS v(product_type_code, type_name)
+WHERE NOT EXISTS (
+  SELECT 1 FROM product_types pt WHERE pt.type_name = v.type_name
+);
 -- Sample products in category 4 (only if the category has none yet).
 INSERT INTO products (product_code, product_name, category_id, base_price)
 SELECT v.product_code, v.product_name, 4, 0
