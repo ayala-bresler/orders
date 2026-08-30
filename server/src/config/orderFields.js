@@ -30,6 +30,8 @@ const ITEM_DETAIL_FIELDS = [
   { key: 'crown_rimmonim_model', label: 'דגם כתר-רימונים', type: 'text' },
   { key: 'has_rimmonim', label: 'רימונים', type: 'boolean' },
   { key: 'rimmonim_model', label: 'דגם רימונים', type: 'text' },
+  { key: 'has_coat', label: 'מעיל', type: 'boolean' },
+  { key: 'coat_model', label: 'דגם מעיל', type: 'text' },
   { key: 'has_breastplate', label: 'טס', type: 'boolean' },
   { key: 'breastplate_model', label: 'דגם טס', type: 'text' },
   { key: 'has_pointer', label: 'יד', type: 'boolean' },
@@ -83,9 +85,9 @@ function hasItemManufacturingData(item) {
     'customer_notes', 'model', 'size_code',
     'parchment_diameter', 'plate_diameter', 'parchment_height',
     'parochet_height',
-    'has_stones', 'has_crown', 'has_crown_rimmonim', 'has_rimmonim',
+    'has_stones', 'has_crown', 'has_crown_rimmonim', 'has_rimmonim', 'has_coat',
     'has_breastplate', 'has_pointer',
-    'stones_color', 'crown_model', 'crown_rimmonim_model', 'rimmonim_model',
+    'stones_color', 'crown_model', 'crown_rimmonim_model', 'rimmonim_model', 'coat_model',
     'breastplate_model', 'pointer_model',
   ];
   return signalKeys.some((key) => {
@@ -140,6 +142,7 @@ function hasAccessorySelection(item) {
     item?.has_crown
     || item?.has_crown_rimmonim
     || item?.has_rimmonim
+    || item?.has_coat
     || item?.has_breastplate
     || item?.has_pointer
   );

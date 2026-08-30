@@ -16,6 +16,7 @@ const ACCESSORY_SPECS = [
   { hasKey: 'has_crown', codeKey: 'crown_model', label: 'כתר' },
   { hasKey: 'has_crown_rimmonim', codeKey: 'crown_rimmonim_model', label: 'כתר-רימונים' },
   { hasKey: 'has_rimmonim', codeKey: 'rimmonim_model', label: 'רימונים' },
+  { hasKey: 'has_coat', codeKey: 'coat_model', label: 'מעיל' },
   { hasKey: 'has_breastplate', codeKey: 'breastplate_model', label: 'טס' },
   { hasKey: 'has_pointer', codeKey: 'pointer_model', label: 'יד' },
 ];

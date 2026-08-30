@@ -12,6 +12,7 @@ export function primaryAccessory(item) {
     { hasKey: 'has_crown', codeKey: 'crown_model', nameKey: 'crown_model_name', label: 'כתר' },
     { hasKey: 'has_crown_rimmonim', codeKey: 'crown_rimmonim_model', nameKey: 'crown_rimmonim_model_name', label: 'כתר-רימונים' },
     { hasKey: 'has_rimmonim', codeKey: 'rimmonim_model', nameKey: 'rimmonim_model_name', label: 'רימונים' },
+    { hasKey: 'has_coat', codeKey: 'coat_model', nameKey: 'coat_model_name', label: 'מעיל' },
     { hasKey: 'has_breastplate', codeKey: 'breastplate_model', nameKey: 'breastplate_model_name', label: 'טס' },
     { hasKey: 'has_pointer', codeKey: 'pointer_model', nameKey: 'pointer_model_name', label: 'יד' },
   ];
@@ -77,6 +78,7 @@ export function formatAccessoryLine(item) {
     { codeKey: 'crown_model', nameKey: 'crown_model_name', label: 'כתר' },
     { codeKey: 'crown_rimmonim_model', nameKey: 'crown_rimmonim_model_name', label: 'כתר-רימונים' },
     { codeKey: 'rimmonim_model', nameKey: 'rimmonim_model_name', label: 'רימונים' },
+    { codeKey: 'coat_model', nameKey: 'coat_model_name', label: 'מעיל' },
     { codeKey: 'breastplate_model', nameKey: 'breastplate_model_name', label: 'טס' },
     { codeKey: 'pointer_model', nameKey: 'pointer_model_name', label: 'יד' },
   ];
