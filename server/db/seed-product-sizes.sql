@@ -49,3 +49,40 @@ ON CONFLICT (size_code, product_type_code) DO UPDATE SET
   export_scale_factor = EXCLUDED.export_scale_factor,
   sort_order = EXCLUDED.sort_order,
   supports_verses = EXCLUDED.supports_verses;
+
+-- Accessory types: same plate sizes as עץ חיים (no verse SVG).
+INSERT INTO product_types (product_type_code, type_name)
+SELECT v.product_type_code, v.type_name
+FROM (VALUES
+    ('CRM', 'כתר-רימונים'),
+    ('RM',  'רימונים'),
+    ('ML',  'מעיל')
+) AS v(product_type_code, type_name)
+WHERE NOT EXISTS (SELECT 1 FROM product_types pt WHERE pt.type_name = v.type_name)
+  AND NOT EXISTS (SELECT 1 FROM product_types pt WHERE pt.product_type_code = v.product_type_code);
+
+INSERT INTO product_sizes (
+  size_code, product_type_code, size_name, svg_template_file,
+  diameter_mm, export_scale_factor, sort_order, supports_verses
+)
+SELECT
+  s.size_code, t.product_type_code, s.size_name, NULL,
+  s.diameter_mm, 0.352778, s.sort_order, FALSE
+FROM (VALUES
+  ('7.5', '7.5', 7.5, 1),
+  ('9',   '9',   9,   2),
+  ('11',  '11',  11,  3),
+  ('12',  '12',  12,  4),
+  ('13',  '13',  13,  5),
+  ('14',  '14',  14,  6),
+  ('15',  '15',  15,  7),
+  ('16',  '16',  16,  8)
+) AS s(size_code, size_name, diameter_mm, sort_order)
+CROSS JOIN (VALUES ('CRM'), ('RM'), ('ML')) AS t(product_type_code)
+WHERE EXISTS (SELECT 1 FROM product_types pt WHERE pt.product_type_code = t.product_type_code)
+ON CONFLICT (size_code, product_type_code) DO UPDATE SET
+  size_name = EXCLUDED.size_name,
+  diameter_mm = EXCLUDED.diameter_mm,
+  export_scale_factor = EXCLUDED.export_scale_factor,
+  sort_order = EXCLUDED.sort_order,
+  supports_verses = EXCLUDED.supports_verses;

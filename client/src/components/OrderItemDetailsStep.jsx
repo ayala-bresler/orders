@@ -278,6 +278,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
       'crown_model',
       'crown_rimmonim_model',
       'rimmonim_model',
+      'coat_model',
       'breastplate_model',
       'pointer_model',
     ]) {
@@ -295,12 +296,14 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
       out.crown_rimmonim_model = main;
     }
     if (out.has_rimmonim && !out.rimmonim_model && main) out.rimmonim_model = main;
+    if (out.has_coat && !out.coat_model && main) out.coat_model = main;
     if (out.has_breastplate && !out.breastplate_model && main) out.breastplate_model = main;
     if (out.has_pointer && !out.pointer_model && main) out.pointer_model = main;
     // Persist only live checks — drop leftover model codes when unchecked.
     if (out.has_crown !== true) out.crown_model = null;
     if (out.has_crown_rimmonim !== true) out.crown_rimmonim_model = null;
     if (out.has_rimmonim !== true) out.rimmonim_model = null;
+    if (out.has_coat !== true) out.coat_model = null;
     if (out.has_breastplate !== true) out.breastplate_model = null;
     if (out.has_pointer !== true) out.pointer_model = null;
     return out;
@@ -628,6 +631,16 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
                   label="רימונים"
                   modelKey="rimmonim_model"
                   hasKey="has_rimmonim"
+                  item={item}
+                  models={models}
+                  modelOptions={crownModels}
+                  mainModelCode={mainModelCode}
+                  onAccessoryChange={changeAccessory}
+                />
+                <AccessoryRow
+                  label="מעיל"
+                  modelKey="coat_model"
+                  hasKey="has_coat"
                   item={item}
                   models={models}
                   modelOptions={crownModels}

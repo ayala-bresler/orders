@@ -23,6 +23,7 @@ FROM (VALUES
     ('CR', 'כתר'),
     ('CRM', 'כתר-רימונים'),
     ('RM', 'רימונים'),
+    ('ML', 'מעיל'),
     ('BP', 'טס'),
     ('PT', 'יד')
 ) AS v(product_type_code, type_name)

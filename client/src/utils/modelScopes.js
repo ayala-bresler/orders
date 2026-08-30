@@ -42,6 +42,7 @@ export function itemUsesSpecialTextModel(item) {
   if (item.has_crown && isSpecialTextModel(item.crown_model)) return true;
   if (item.has_crown_rimmonim && isSpecialTextModel(item.crown_rimmonim_model)) return true;
   if (item.has_rimmonim && isSpecialTextModel(item.rimmonim_model)) return true;
+  if (item.has_coat && isSpecialTextModel(item.coat_model)) return true;
   if (item.has_breastplate && isSpecialTextModel(item.breastplate_model)) return true;
   if (item.has_pointer && isSpecialTextModel(item.pointer_model)) return true;
   return false;

@@ -68,6 +68,8 @@ async function getOrderItems(orderId) {
             crm.model_name AS crown_rimmonim_model_name,
             oi.has_rimmonim, oi.rimmonim_model,
             rm.model_name AS rimmonim_model_name,
+            oi.has_coat, oi.coat_model,
+            com.model_name AS coat_model_name,
             oi.has_breastplate, oi.breastplate_model,
             bm.model_name AS breastplate_model_name,
             oi.has_pointer, oi.pointer_model,
@@ -83,6 +85,7 @@ async function getOrderItems(orderId) {
        LEFT JOIN models cm ON cm.model_code = oi.crown_model
        LEFT JOIN models crm ON crm.model_code = oi.crown_rimmonim_model
        LEFT JOIN models rm ON rm.model_code = oi.rimmonim_model
+       LEFT JOIN models com ON com.model_code = oi.coat_model
        LEFT JOIN models bm ON bm.model_code = oi.breastplate_model
        LEFT JOIN models pm ON pm.model_code = oi.pointer_model
       WHERE oi.order_id = $1
