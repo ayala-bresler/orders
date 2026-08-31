@@ -340,7 +340,7 @@ function parseIncomingValue(key, raw) {
     if (raw === false || raw === 'false' || raw === 0 || raw === '0') return false;
     return null;
   }
-  if (key === 'order_notes') {
+  if (key === 'customer_notes') {
     const text = raw == null ? '' : String(raw);
     return clampOrderNotes(text) || null;
   }

@@ -12,7 +12,7 @@ import {
   emailOrderItemDxf,
 } from '../api.js';
 import {
-  PREVIEW_SCROLL_Y_ZOOM,
+  PREVIEW_SCROLL_ZOOM_THRESHOLD,
   MOBILE_LAYOUT_MQ,
   MOBILE_PREVIEW_DEFAULT_ZOOM,
   DESKTOP_PREVIEW_DEFAULT_ZOOM,
@@ -86,12 +86,6 @@ export default function TemplateEditor({
     setDefaultPreviewZoom(nextDefault);
     setPreviewZoom(nextDefault);
   }, [orderId, itemId, templateKey]);
-
-  // Reset local “just sent” flag when switching order/item (new file / navigation).
-  useEffect(() => {
-    setOrderCompleted(false);
-    setSaveAcknowledged(false);
-  }, [orderId, itemId]);
 
   useEffect(() => {
     const mq = window.matchMedia(MOBILE_LAYOUT_MQ);
@@ -500,18 +494,8 @@ export default function TemplateEditor({
   const previewFontScales = bakedSvg ? {} : fontScales;
 
   return (
-    <div className={`verse-page${orderSent || orderCompleted ? ' verse-page--sent' : ''}`}>
-      {orderSent || orderCompleted ? (
-        <>
-          <OrderSentMarker
-            variant="diagonal"
-            className="order-sent-ribbon"
-            anchorSelector=".main-content-container"
-            visible
-          />
-          <OrderSentMarker variant="sticky" visible />
-        </>
-      ) : null}
+    <div className={`verse-page${orderSent ? ' verse-page--sent' : ''}`}>
+      {orderSent ? <OrderSentMarker variant="sticky" /> : null}
       <img
         className="verse-print-logo"
         src="/img-judaica-logo-with-bg.png?v=5"
@@ -551,7 +535,7 @@ export default function TemplateEditor({
           {error && <div className="notice error inline">{error}</div>}
         </section>
 
-        {/* Preview always mounts (including after order sent). */}
+        {/* Preview always mounts (including after order sent) — marker hugs SVG top edge. */}
         <section className="preview-pane verse-preview-pane" aria-label="תצוגת SVG">
           <div className="preview-head">
             <h3 className="panel-title">תצוגה</h3>
@@ -586,15 +570,15 @@ export default function TemplateEditor({
             </div>
           </div>
           <div
-            className={[
-              'preview-viewport',
-              previewZoom >= PREVIEW_SCROLL_Y_ZOOM
-                ? 'preview-viewport--scroll'
-                : 'preview-viewport--fit',
-            ]
-              .filter(Boolean)
-              .join(' ')}
+            className={`preview-viewport${
+              previewZoom > PREVIEW_SCROLL_ZOOM_THRESHOLD
+                ? ' preview-viewport--scroll'
+                : ' preview-viewport--fit'
+            }${orderSent ? ' preview-viewport--sent' : ''}`}
           >
+            {orderSent ? (
+              <OrderSentMarker variant="diagonal" className="order-sent-marker--verses" />
+            ) : null}
             {previewSvg ? (
               <LiveSvgCanvas
                 ref={canvasRef}

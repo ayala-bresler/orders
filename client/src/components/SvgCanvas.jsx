@@ -7,7 +7,6 @@ import {
   syncSvgFromState,
   fitSvgToContainerHeight,
   clearSvgFitDimensions,
-  PREVIEW_SCROLL_Y_ZOOM,
 } from '../utils/svgLiveUpdate.js';
 import { styleForKey } from '../utils/verseStyles.js';
 
@@ -65,121 +64,55 @@ const LiveSvgCanvas = forwardRef(function LiveSvgCanvas(
     const wrapper = wrapperRef.current;
     const pane = wrapper.closest('.preview-pane, .verse-preview-pane');
     const viewport = wrapper.closest('.preview-viewport');
-    const zoomed = Number(zoom) >= PREVIEW_SCROLL_Y_ZOOM;
 
+    let scrollRaf = 0;
     const refit = () => {
       if (svgRef.current) fitSvgToContainerHeight(svgRef.current, wrapper, zoom);
     };
-
-    refit();
-    const raf = window.requestAnimationFrame(refit);
-
-    const observer = new ResizeObserver(() => {
-      refit();
-    });
-    if (pane) observer.observe(pane);
-    if (viewport) observer.observe(viewport);
-
-    window.addEventListener('resize', refit);
-    window.visualViewport?.addEventListener('resize', refit);
-
-    const handleBeforePrint = () => {
-      if (svgRef.current) clearSvgFitDimensions(svgRef.current);
-    };
-    const handleAfterPrint = () => {
-      refit();
-    };
-    window.addEventListener('beforeprint', handleBeforePrint);
-    window.addEventListener('afterprint', handleAfterPrint);
-
-    let scrollRaf = 0;
     const refitOnScroll = () => {
-      if (zoomed) return;
       if (scrollRaf) return;
       scrollRaf = window.requestAnimationFrame(() => {
         scrollRaf = 0;
         refit();
       });
     };
-    if (!zoomed) {
-      window.addEventListener('scroll', refitOnScroll, { passive: true, capture: true });
-      window.visualViewport?.addEventListener('scroll', refitOnScroll);
-    }
+
+    const handleBeforePrint = () => {
+      if (svgRef.current) clearSvgFitDimensions(svgRef.current);
+    };
+
+    const handleAfterPrint = () => {
+      refit();
+    };
+
+    refit();
+    // Second pass after layout settles (flex/footer positions).
+    const raf = window.requestAnimationFrame(refit);
+
+    const observer = new ResizeObserver(refit);
+    if (pane) observer.observe(pane);
+    if (viewport) observer.observe(viewport);
+    observer.observe(wrapper);
+    window.addEventListener('resize', refit);
+    // Mobile: preview often sits below the fold; re-fit when it scrolls into view.
+    window.addEventListener('scroll', refitOnScroll, { passive: true, capture: true });
+    window.addEventListener('beforeprint', handleBeforePrint);
+    window.addEventListener('afterprint', handleAfterPrint);
+    window.visualViewport?.addEventListener('resize', refit);
+    window.visualViewport?.addEventListener('scroll', refitOnScroll);
 
     return () => {
       window.cancelAnimationFrame(raf);
       if (scrollRaf) window.cancelAnimationFrame(scrollRaf);
       observer.disconnect();
       window.removeEventListener('resize', refit);
-      window.visualViewport?.removeEventListener('resize', refit);
+      window.removeEventListener('scroll', refitOnScroll, true);
       window.removeEventListener('beforeprint', handleBeforePrint);
       window.removeEventListener('afterprint', handleAfterPrint);
-      window.removeEventListener('scroll', refitOnScroll, true);
+      window.visualViewport?.removeEventListener('resize', refit);
       window.visualViewport?.removeEventListener('scroll', refitOnScroll);
     };
   }, [fitByHeight, masterSvg, zoom]);
-
-  // Drag-to-pan when zoomed (scrollbars are hidden).
-  useEffect(() => {
-    const wrapper = wrapperRef.current;
-    const viewport = wrapper?.closest?.('.preview-viewport');
-    if (!viewport || Number(zoom) < PREVIEW_SCROLL_Y_ZOOM) return undefined;
-
-    let dragging = false;
-    let startX = 0;
-    let startY = 0;
-    let originLeft = 0;
-    let originTop = 0;
-
-    const onPointerDown = (e) => {
-      if (e.button != null && e.button !== 0) return;
-      dragging = true;
-      startX = e.clientX;
-      startY = e.clientY;
-      originLeft = viewport.scrollLeft;
-      originTop = viewport.scrollTop;
-      viewport.classList.add('is-panning');
-      try {
-        viewport.setPointerCapture?.(e.pointerId);
-      } catch {
-        /* ignore */
-      }
-    };
-
-    const onPointerMove = (e) => {
-      if (!dragging) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      viewport.scrollLeft = originLeft - dx;
-      viewport.scrollTop = originTop - dy;
-    };
-
-    const onPointerUp = (e) => {
-      if (!dragging) return;
-      dragging = false;
-      viewport.classList.remove('is-panning');
-      try {
-        viewport.releasePointerCapture?.(e.pointerId);
-      } catch {
-        /* ignore */
-      }
-    };
-
-    viewport.addEventListener('pointerdown', onPointerDown);
-    viewport.addEventListener('pointermove', onPointerMove);
-    viewport.addEventListener('pointerup', onPointerUp);
-    viewport.addEventListener('pointercancel', onPointerUp);
-    viewport.addEventListener('lostpointercapture', onPointerUp);
-
-    return () => {
-      viewport.removeEventListener('pointerdown', onPointerDown);
-      viewport.removeEventListener('pointermove', onPointerMove);
-      viewport.removeEventListener('pointerup', onPointerUp);
-      viewport.removeEventListener('pointercancel', onPointerUp);
-      viewport.removeEventListener('lostpointercapture', onPointerUp);
-      viewport.classList.remove('is-panning');
-    };
-  }, [zoom, masterSvg]);
 
   return (
     <div

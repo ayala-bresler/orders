@@ -25,17 +25,25 @@ const STORAGE_DIR =
 /** AcroForm field names in the master order PDF template. */
 const PDF_FIELD_MAP = {
   customerName: 'Text Field 1',
+  phone: 'Text Field 35',
   model: 'Text Field 7',
   plateDiameter: 'Text Field 10',
   parchmentDiameter: 'Text Field 3',
   stones: 'Text Field 11',
   parchmentHeight: 'Text Field 9',
-  crown: 'Text Field 30',
+  // Left accessories column (top → bottom): כתר, כתר-רימונים, רימונים, מעיל, טס, יד
+  crown: 'Text Field 36',
   crownCheck: 'Check Box 1',
-  breastplate: 'Text Field 29',
-  breastplateCheck: 'Check Box 2',
-  pointer: 'Text Field 28',
-  pointerCheck: 'Check Box 3',
+  crownRimmonim: 'Text Field 37',
+  crownRimmonimCheck: 'Check Box 4',
+  rimmonim: 'Text Field 38',
+  rimmonimCheck: 'Check Box 5',
+  coat: 'Text Field 39',
+  coatCheck: 'Check Box 6',
+  breastplate: 'Text Field 40',
+  breastplateCheck: 'Check Box 7',
+  pointer: 'Text Field 41',
+  pointerCheck: 'Check Box 8',
   deliveryDate: 'Text Field 33',
   orderDate: 'Text Field 32',
   parochetHeight: 'Text Field 34',
@@ -43,11 +51,11 @@ const PDF_FIELD_MAP = {
     // ימין למעלה — שורה 1 = עליון, שורה 2 = תחתון
     top_right: ['Text Field 12', 'Text Field 14'],
     // שמאל למעלה
-    top_left: ['Text Field 15', 'Text Field 16'],
+    top_left: ['Text Field 44', 'Text Field 45'],
     // ימין למטה
-    bottom_right: ['Text Field 17', 'Text Field 19'],
+    bottom_right: ['Text Field 46', 'Text Field 47'],
     // שמאל למטה
-    bottom_left: ['Text Field 18', 'Text Field 20'],
+    bottom_left: ['Text Field 48', 'Text Field 49'],
   },
   notes: [
     'Text Field 21',
@@ -150,7 +158,7 @@ function modelNameOnly(modelCode, modelNameByCode) {
   return modelNameByCode[modelCode] || '';
 }
 
-function buildPdfPayload({ customerName, order, item, values, modelNameByCode }) {
+function buildPdfPayload({ customerName, customerPhone, order, item, values, modelNameByCode }) {
   const resolveModelName = (code) => modelNameOnly(code, modelNameByCode);
   const hasMainModel = Boolean(String(item?.model || '').trim());
 
@@ -158,26 +166,45 @@ function buildPdfPayload({ customerName, order, item, values, modelNameByCode })
   if (item.stones_color) stonesParts.push(item.stones_color);
   if (item.has_stones) stonesParts.push('כן');
 
-  const notesLines = String(order.order_notes || '')
+  const notesLines = String(item.customer_notes || '')
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
     .slice(0, PDF_FIELD_MAP.notes.length);
 
+  const accessory = (hasKey, modelKey) => ({
+    name: item[hasKey] ? resolveModelName(item[modelKey] || item.model) : '',
+    check: Boolean(item[hasKey]),
+  });
+
+  const crown = accessory('has_crown', 'crown_model');
+  const crownRimmonim = accessory('has_crown_rimmonim', 'crown_rimmonim_model');
+  const rimmonim = accessory('has_rimmonim', 'rimmonim_model');
+  const coat = accessory('has_coat', 'coat_model');
+  const breastplate = accessory('has_breastplate', 'breastplate_model');
+  const pointer = accessory('has_pointer', 'pointer_model');
+
   const payload = {
     customerName: customerName || '',
+    phone: String(customerPhone || '').trim(),
     model: resolveModelName(item.model),
     // Plate diameter applies to עץ חיים and to כתר-only (and other accessory) orders.
     plateDiameter: fmtNum(item.plate_diameter),
     parchmentDiameter: hasMainModel ? fmtNum(item.parchment_diameter) : '',
     stones: stonesParts.join(' '),
     parchmentHeight: hasMainModel ? fmtNum(item.parchment_height) : '',
-    crown: item.has_crown ? resolveModelName(item.crown_model || item.model) : '',
-    crownCheck: Boolean(item.has_crown),
-    breastplate: item.has_breastplate ? resolveModelName(item.breastplate_model || item.model) : '',
-    breastplateCheck: Boolean(item.has_breastplate),
-    pointer: item.has_pointer ? resolveModelName(item.pointer_model || item.model) : '',
-    pointerCheck: Boolean(item.has_pointer),
+    crown: crown.name,
+    crownCheck: crown.check,
+    crownRimmonim: crownRimmonim.name,
+    crownRimmonimCheck: crownRimmonim.check,
+    rimmonim: rimmonim.name,
+    rimmonimCheck: rimmonim.check,
+    coat: coat.name,
+    coatCheck: coat.check,
+    breastplate: breastplate.name,
+    breastplateCheck: breastplate.check,
+    pointer: pointer.name,
+    pointerCheck: pointer.check,
     deliveryDate: fmtDate(order.estimated_delivery_date),
     orderDate: fmtDate(order.order_date),
     parochetHeight: hasMainModel ? fmtNum(item.parochet_height) : '',
@@ -215,17 +242,26 @@ async function fillOrderPdf(payload) {
   form.updateFieldAppearances(hebrewFont);
 
   setText(form, PDF_FIELD_MAP.customerName, payload.customerName, hebrewFont);
+  setText(form, PDF_FIELD_MAP.phone, payload.phone, hebrewFont, { forceDir: 'ltr' });
   setText(form, PDF_FIELD_MAP.model, payload.model, hebrewFont);
   setText(form, PDF_FIELD_MAP.plateDiameter, payload.plateDiameter, hebrewFont, { forceDir: 'ltr' });
   setText(form, PDF_FIELD_MAP.parchmentDiameter, payload.parchmentDiameter, hebrewFont, { forceDir: 'ltr' });
   setText(form, PDF_FIELD_MAP.stones, payload.stones, hebrewFont);
   setText(form, PDF_FIELD_MAP.parchmentHeight, payload.parchmentHeight, hebrewFont, { forceDir: 'ltr' });
+
   setText(form, PDF_FIELD_MAP.crown, payload.crown, hebrewFont);
   setCheck(form, PDF_FIELD_MAP.crownCheck, payload.crownCheck);
+  setText(form, PDF_FIELD_MAP.crownRimmonim, payload.crownRimmonim, hebrewFont);
+  setCheck(form, PDF_FIELD_MAP.crownRimmonimCheck, payload.crownRimmonimCheck);
+  setText(form, PDF_FIELD_MAP.rimmonim, payload.rimmonim, hebrewFont);
+  setCheck(form, PDF_FIELD_MAP.rimmonimCheck, payload.rimmonimCheck);
+  setText(form, PDF_FIELD_MAP.coat, payload.coat, hebrewFont);
+  setCheck(form, PDF_FIELD_MAP.coatCheck, payload.coatCheck);
   setText(form, PDF_FIELD_MAP.breastplate, payload.breastplate, hebrewFont);
   setCheck(form, PDF_FIELD_MAP.breastplateCheck, payload.breastplateCheck);
   setText(form, PDF_FIELD_MAP.pointer, payload.pointer, hebrewFont);
   setCheck(form, PDF_FIELD_MAP.pointerCheck, payload.pointerCheck);
+
   setText(form, PDF_FIELD_MAP.deliveryDate, payload.deliveryDate, hebrewFont, { forceDir: 'ltr' });
   setText(form, PDF_FIELD_MAP.orderDate, payload.orderDate, hebrewFont, { forceDir: 'ltr' });
   setText(form, PDF_FIELD_MAP.parochetHeight, payload.parochetHeight, hebrewFont, { forceDir: 'ltr' });
@@ -291,11 +327,26 @@ async function exportOrderItemPdf(orderId, itemId, deps = {}) {
 
   const item = { ...details.item };
   item.model = resolveModelCode(item.model, modelRows);
-  if (item.crown_model) item.crown_model = resolveModelCode(item.crown_model, modelRows);
-  if (item.breastplate_model) item.breastplate_model = resolveModelCode(item.breastplate_model, modelRows);
-  if (item.pointer_model) item.pointer_model = resolveModelCode(item.pointer_model, modelRows);
+  for (const key of [
+    'crown_model',
+    'crown_rimmonim_model',
+    'rimmonim_model',
+    'coat_model',
+    'breastplate_model',
+    'pointer_model',
+  ]) {
+    if (item[key]) item[key] = resolveModelCode(item[key], modelRows);
+  }
 
-  for (const code of [item.model, item.crown_model, item.breastplate_model, item.pointer_model]) {
+  for (const code of [
+    item.model,
+    item.crown_model,
+    item.crown_rimmonim_model,
+    item.rimmonim_model,
+    item.coat_model,
+    item.breastplate_model,
+    item.pointer_model,
+  ]) {
     if (code) modelCodes.add(code);
   }
 
@@ -308,6 +359,7 @@ async function exportOrderItemPdf(orderId, itemId, deps = {}) {
 
   const payload = buildPdfPayload({
     customerName: details.customerName,
+    customerPhone: details.customerPhone,
     order: details.order,
     item,
     values,

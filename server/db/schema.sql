@@ -210,12 +210,10 @@ CREATE TABLE IF NOT EXISTS orders (
     order_date              TIMESTAMP       NULL DEFAULT CURRENT_TIMESTAMP,
     estimated_delivery_date DATE            NULL,
     total_amount            NUMERIC(10, 2)  NULL DEFAULT 0.00,
-    status                  VARCHAR(50)     NULL DEFAULT 'Pending',
-    order_notes             TEXT            NULL
+    status                  VARCHAR(50)     NULL DEFAULT 'Pending'
 );
 
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS estimated_delivery_date DATE;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_notes             TEXT;
 
 -- -----------------------------------------------------------------------------
 -- order_items
@@ -292,12 +290,24 @@ ALTER TABLE order_items ADD COLUMN IF NOT EXISTS has_rimmonim        BOOLEAN DEF
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS rimmonim_model      VARCHAR(10);
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS has_coat            BOOLEAN DEFAULT FALSE;
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS coat_model          VARCHAR(10);
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS customer_notes      TEXT;
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS size_code           TEXT;
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_type_code   VARCHAR(10);
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS status              VARCHAR(20);
 UPDATE order_items SET status = 'open' WHERE status IS NULL;
 ALTER TABLE order_items ALTER COLUMN status SET DEFAULT 'open';
 ALTER TABLE order_items ALTER COLUMN status SET NOT NULL;
+
+-- Move legacy order-level notes onto items, then drop orders.order_notes.
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_notes TEXT;
+UPDATE order_items oi
+   SET customer_notes = o.order_notes
+  FROM orders o
+ WHERE oi.order_id = o.order_id
+   AND (oi.customer_notes IS NULL OR BTRIM(oi.customer_notes) = '')
+   AND o.order_notes IS NOT NULL
+   AND BTRIM(o.order_notes) <> '';
+ALTER TABLE orders DROP COLUMN IF EXISTS order_notes;
 
 CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items (order_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_status ON order_items (order_id, status);
