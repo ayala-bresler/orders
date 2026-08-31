@@ -145,8 +145,6 @@ export function clearSvgFitDimensions(svgRoot) {
   svgRoot.style.width = '';
   svgRoot.style.maxHeight = '';
   svgRoot.style.maxWidth = '';
-  svgRoot.style.minHeight = '';
-  svgRoot.style.minWidth = '';
 
   const inner = svgRoot.parentElement;
   if (inner?.classList?.contains('svg-canvas-inner')) {
@@ -154,30 +152,21 @@ export function clearSvgFitDimensions(svgRoot) {
     inner.style.height = '';
     inner.style.maxWidth = '';
     inner.style.maxHeight = '';
-    inner.style.minWidth = '';
-    inner.style.minHeight = '';
     const wrapper = inner.parentElement;
     if (wrapper?.classList?.contains('svg-canvas')) {
       wrapper.style.width = '';
       wrapper.style.height = '';
       wrapper.style.maxWidth = '';
       wrapper.style.maxHeight = '';
-      wrapper.style.minWidth = '';
-      wrapper.style.minHeight = '';
       delete wrapper.dataset.baseW;
       delete wrapper.dataset.baseH;
       delete wrapper.dataset.layoutSig;
-      delete wrapper.dataset.overflow;
     }
   }
 }
 
-/** Zoom at or below this: fit in viewport, no scrolling. */
-export const PREVIEW_SCROLL_ZOOM_THRESHOLD = 1.1;
-/** Above this zoom: enable vertical scrollbar. */
-export const PREVIEW_SCROLL_Y_ZOOM = 1.1;
-/** Above this zoom: enable horizontal scrollbar. */
-export const PREVIEW_SCROLL_X_ZOOM = 1.4;
+/** Zoom at or below this value: fit in viewport, no scrolling. Above: pan/scroll. */
+export const PREVIEW_SCROLL_ZOOM_THRESHOLD = 1;
 
 /** Preview zoom starts at true 100% on all layouts. */
 export const MOBILE_PREVIEW_DEFAULT_ZOOM = 1;
@@ -298,47 +287,24 @@ function computeBaseFit(availW, availH, aspect) {
   return { baseW, baseH: baseW / aspect };
 }
 
-function applyFitDimensions(svgRoot, wrapperEl, w, h, { allowOverflow = false } = {}) {
-  const widthPx = `${w}px`;
-  const heightPx = `${h}px`;
-
-  svgRoot.style.height = heightPx;
-  svgRoot.style.width = widthPx;
-  svgRoot.style.maxHeight = heightPx;
-  svgRoot.style.maxWidth = widthPx;
-  svgRoot.style.minHeight = heightPx;
-  svgRoot.style.minWidth = widthPx;
+function applyFitDimensions(svgRoot, wrapperEl, w, h) {
+  svgRoot.style.height = `${h}px`;
+  svgRoot.style.width = `${w}px`;
+  svgRoot.style.maxHeight = `${h}px`;
+  svgRoot.style.maxWidth = `${w}px`;
   svgRoot.style.display = 'block';
 
   const inner = wrapperEl.querySelector('.svg-canvas-inner') || svgRoot.parentElement;
   if (inner) {
-    inner.style.width = widthPx;
-    inner.style.height = heightPx;
-    inner.style.minWidth = widthPx;
-    inner.style.minHeight = heightPx;
-    if (allowOverflow) {
-      inner.style.maxWidth = 'none';
-      inner.style.maxHeight = 'none';
-    } else {
-      inner.style.maxWidth = widthPx;
-      inner.style.maxHeight = heightPx;
-    }
+    inner.style.width = `${w}px`;
+    inner.style.height = `${h}px`;
+    inner.style.maxWidth = `${w}px`;
+    inner.style.maxHeight = `${h}px`;
   }
-
-  wrapperEl.style.width = widthPx;
-  wrapperEl.style.height = heightPx;
-  wrapperEl.style.minWidth = widthPx;
-  wrapperEl.style.minHeight = heightPx;
-  if (allowOverflow) {
-    // Let zoomed content exceed the viewport so overflow can scroll both axes.
-    wrapperEl.style.maxWidth = 'none';
-    wrapperEl.style.maxHeight = 'none';
-    wrapperEl.dataset.overflow = '1';
-  } else {
-    wrapperEl.style.maxWidth = '100%';
-    wrapperEl.style.maxHeight = isMobileLayout() ? heightPx : '100%';
-    delete wrapperEl.dataset.overflow;
-  }
+  wrapperEl.style.width = `${w}px`;
+  wrapperEl.style.height = `${h}px`;
+  wrapperEl.style.maxWidth = '100%';
+  wrapperEl.style.maxHeight = isMobileLayout() ? `${h}px` : '100%';
 }
 
 /**
@@ -359,21 +325,26 @@ export function fitSvgToContainerHeight(svgRoot, wrapperEl, zoom = 1) {
   const aspect = vb.w / vb.h;
   const zoomFactor = Number.isFinite(Number(zoom)) && Number(zoom) > 0 ? Number(zoom) : 1;
 
-  // At <110%: always recompute contain-fit from the live screen box.
-  if (zoomFactor < PREVIEW_SCROLL_Y_ZOOM) {
+  // At ≤100%: always recompute contain-fit from the live screen box.
+  if (zoomFactor <= PREVIEW_SCROLL_ZOOM_THRESHOLD) {
     const fit = computeBaseFit(availW, availH, aspect);
     const w = Math.max(1, Math.floor(fit.baseW));
     const h = Math.max(1, Math.floor(fit.baseH));
     wrapperEl.dataset.baseW = String(fit.baseW);
     wrapperEl.dataset.baseH = String(fit.baseH);
     wrapperEl.dataset.layoutSig = `${Math.round(availW)}x${Math.round(availH)}`;
-    applyFitDimensions(svgRoot, wrapperEl, w, h, { allowOverflow: false });
+    applyFitDimensions(svgRoot, wrapperEl, w, h);
     return;
   }
 
-  // Zoomed (≥110%): keep a stable base from the last fit-to-screen size.
-  // Never invalidate base while zoomed — scrollbar gutter would shrink availW/H
-  // and collapse overflow, which removes the scrollbars.
+  // Zoomed in: keep a stable base from the last fit-to-screen size.
+  const layoutSig = `${Math.round(availW)}x${Math.round(availH)}`;
+  if (wrapperEl.dataset.layoutSig !== layoutSig) {
+    delete wrapperEl.dataset.baseW;
+    delete wrapperEl.dataset.baseH;
+    wrapperEl.dataset.layoutSig = layoutSig;
+  }
+
   let baseW = Number(wrapperEl.dataset.baseW);
   let baseH = Number(wrapperEl.dataset.baseH);
   if (!Number.isFinite(baseW) || !Number.isFinite(baseH) || baseW <= 0 || baseH <= 0) {
@@ -388,8 +359,7 @@ export function fitSvgToContainerHeight(svgRoot, wrapperEl, zoom = 1) {
     svgRoot,
     wrapperEl,
     Math.round(baseW * zoomFactor),
-    Math.round(baseH * zoomFactor),
-    { allowOverflow: true }
+    Math.round(baseH * zoomFactor)
   );
 }
 

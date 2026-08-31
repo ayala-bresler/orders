@@ -131,11 +131,11 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
             normalizedItem.size_code = defaultSize?.size_code ?? '12';
           }
         }
-        const loadedItem = normalizedItem;
-        const normalizedOrder = {
-          ...loadedOrder,
-          order_notes: clampOrderNotes(loadedOrder.order_notes),
+        const loadedItem = {
+          ...normalizedItem,
+          customer_notes: clampOrderNotes(normalizedItem.customer_notes),
         };
+        const normalizedOrder = { ...loadedOrder };
         setOrder(normalizedOrder);
         setSavedOrder(normalizedOrder);
         setItem(loadedItem);
@@ -240,7 +240,8 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
 
   const changeItem = (key, val) => {
     setSaveAcknowledged(false);
-    setItem((i) => ({ ...i, [key]: val }));
+    const nextVal = key === 'customer_notes' ? clampOrderNotes(val) : val;
+    setItem((i) => ({ ...i, [key]: nextVal }));
   };
 
   const changeAccessory = ({ hasKey, modelKey, checked, modelCode, mainModelCode: mainCode }) => {
@@ -350,7 +351,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
         price_at_purchase: item.price_at_purchase === '' || item.price_at_purchase == null ? 0 : item.price_at_purchase,
       });
       if (orderNotesRequiredForItem(payloadItem)) {
-        const notes = String(order.order_notes || '').trim();
+        const notes = String(payloadItem.customer_notes || '').trim();
         if (!notes) {
           const err = new Error(
             'נבחר דגם מיוחד — יש למלא הערות עם פרטי הבחירה לפני השמירה.'
@@ -698,8 +699,8 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
                 <div className="details-section-body">
                   <NumberedNotesArea
                     className="details-notes-numbered"
-                    value={fieldValue(order, 'order_notes')}
-                    onChange={(e) => changeOrder('order_notes', e.target.value)}
+                    value={fieldValue(item, 'customer_notes')}
+                    onChange={(e) => changeItem('customer_notes', e.target.value)}
                     placeholder="הקלד הערה…"
                     required={notesRequired}
                   />

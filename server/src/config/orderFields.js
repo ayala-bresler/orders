@@ -4,12 +4,10 @@ const { orderNotesRequiredForItem } = require('./modelScopes');
 
 /**
  * Editable columns on orders (header-level).
- * Matches the live `product_management.orders` table — no delivery_method /
- * shipping_address / payment_method columns in production.
+ * Notes live on order_items.customer_notes (per line item).
  */
 const ORDER_DETAIL_FIELDS = [
   { key: 'estimated_delivery_date', label: 'תאריך אספקה משוער (אופציונלי)', type: 'date' },
-  { key: 'order_notes', label: 'הערות להזמנה', type: 'textarea' },
 ];
 
 /** Editable manufacturing / accessory columns on order_items. */
@@ -36,7 +34,7 @@ const ITEM_DETAIL_FIELDS = [
   { key: 'breastplate_model', label: 'דגם טס', type: 'text' },
   { key: 'has_pointer', label: 'יד', type: 'boolean' },
   { key: 'pointer_model', label: 'דגם יד', type: 'text' },
-  { key: 'customer_notes', label: 'הערות לפריט', type: 'textarea' },
+  { key: 'customer_notes', label: 'הערות', type: 'textarea' },
 ];
 
 const ORDER_KEYS = ORDER_DETAIL_FIELDS.map((f) => f.key);
@@ -100,9 +98,8 @@ function hasItemManufacturingData(item) {
 
 function hasOrderHeaderData(order) {
   if (!order) return false;
-  return (
-    (order.order_notes && String(order.order_notes).trim() !== '')
-    || (order.estimated_delivery_date && String(order.estimated_delivery_date).trim() !== '')
+  return Boolean(
+    order.estimated_delivery_date && String(order.estimated_delivery_date).trim() !== ''
   );
 }
 
@@ -116,18 +113,18 @@ function isDetailsComplete(order, item) {
     const val = order?.[field.key];
     if (val == null || String(val).trim() === '') return false;
   }
-  // Special model (מיוחד / 10) requires non-empty order notes.
+  // Special model (מיוחד / 10) requires non-empty item notes.
   if (orderNotesRequiredForItem(item)) {
-    if (!order?.order_notes || String(order.order_notes).trim() === '') {
+    if (!item?.customer_notes || String(item.customer_notes).trim() === '') {
       return false;
     }
   }
   return hasOrderHeaderData(order) || hasItemManufacturingData(item);
 }
 
-function assertSpecialModelNotes(order, item) {
+function assertSpecialModelNotes(_order, item) {
   if (!orderNotesRequiredForItem(item)) return null;
-  if (order?.order_notes && String(order.order_notes).trim() !== '') return null;
+  if (item?.customer_notes && String(item.customer_notes).trim() !== '') return null;
   return 'נבחר דגם מיוחד — יש למלא הערות עם פרטי הבחירה.';
 }
 
@@ -136,7 +133,7 @@ function hasMainModel(item) {
   return Boolean(item?.model && String(item.model).trim());
 }
 
-/** Crown / טס / יד checkbox selected. */
+/** Accessory checkbox selected. */
 function hasAccessorySelection(item) {
   return Boolean(
     item?.has_crown
