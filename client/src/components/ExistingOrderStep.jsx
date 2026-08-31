@@ -16,9 +16,9 @@ const MIN_CARD_SIZE = 120;
 
 function itemImageSrc(item) {
   const code = orderItemImageModelCode(item);
-  const sku =
-    item.short_sku
-    || modelSkuPrefix(code);
+  if (!code) return null;
+  // Derive SKU from the image model (most-frequent / main), not a stale line short_sku.
+  const sku = modelSkuPrefix(code) || item.short_sku;
   return sku ? modelImageUrl(sku) : null;
 }
 

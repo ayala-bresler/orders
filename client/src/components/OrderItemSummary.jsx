@@ -1,18 +1,28 @@
-import { formatAccessoryLine, mainModelName } from '../utils/orderItemDisplay.js';
+import {
+  formatItemPlateDiameter,
+  formatProductSummaryLine,
+  orderItemImageModelCode,
+} from '../utils/orderItemDisplay.js';
 import BidiText from './BidiText.jsx';
 
-/** Order line: large main model + smaller accessory models when they differ. */
+/**
+ * Order-line card text: one-line product summary, plate diameter last.
+ */
 export default function OrderItemSummary({ item, size = 'default' }) {
-  const accessories = formatAccessoryLine(item);
-  const main = mainModelName(item);
+  const imageCode = orderItemImageModelCode(item);
+  const summary = formatProductSummaryLine(item, imageCode);
+  const plate = formatItemPlateDiameter(item);
+
   return (
     <div className={`order-item-summary${size === 'compact' ? ' order-item-summary--compact' : ''}`}>
-      <BidiText as="div" className="order-item-main" value={main}>
-        {main}
-      </BidiText>
-      {accessories ? (
-        <BidiText as="div" className="order-item-accessories" value={accessories}>
-          {accessories}
+      {summary ? (
+        <BidiText as="div" className="order-item-main" value={summary}>
+          {summary}
+        </BidiText>
+      ) : null}
+      {plate ? (
+        <BidiText as="div" className="order-item-plate" value={`קוטר צלחת ${plate}`}>
+          קוטר צלחת {plate}
         </BidiText>
       ) : null}
     </div>

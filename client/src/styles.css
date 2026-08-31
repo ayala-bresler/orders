@@ -4468,11 +4468,19 @@ html:has(.main-model-picker) body {
   color: var(--muted);
 }
 
+.order-item-plate {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--muted);
+}
+
 .order-item-summary--compact .order-item-main {
   font-size: 17px;
 }
 
-.order-item-summary--compact .order-item-accessories {
+.order-item-summary--compact .order-item-accessories,
+.order-item-summary--compact .order-item-plate {
   font-size: 12px;
 }
 
@@ -4797,11 +4805,20 @@ html:has(.main-model-picker) body {
   text-align: center;
   flex-shrink: 0;
   padding: 0 4px;
+  gap: 2px;
 }
 
 .resume-card-enter .order-item-main {
-  font-size: clamp(13px, 3.2cqi, 18px);
+  font-size: clamp(12px, 2.8cqi, 16px);
   font-weight: 700;
+  line-height: 1.25;
+}
+
+.resume-card-enter .order-item-plate {
+  font-size: clamp(11px, 2.3cqi, 13px);
+  font-weight: 500;
+  color: var(--muted, #7a726a);
+  line-height: 1.2;
 }
 
 .resume-card-enter .order-item-accessories {
