@@ -15,7 +15,7 @@ import ModelSelect from './ModelSelect.jsx';
 import NumberedNotesArea from './NumberedNotesArea.jsx';
 import DeliveryDateField from './DeliveryDateField.jsx';
 import { isDateBeforeToday } from '../utils/dates.js';
-import { IconBack, IconContinue } from './Icons.jsx';
+import { IconBack, IconContinue, IconSave } from './Icons.jsx';
 import { prefetchVerseBake } from '../utils/verseBakePrefetch.js';
 import OrderSentMarker from './OrderSentMarker.jsx';
 
@@ -85,6 +85,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
   onSupportsVersesChange,
   onCancel,
   onDirtyChange,
+  onItemSaved,
 }, ref) {
   const [status, setStatus] = useState('loading');
   const [error, setError] = useState('');
@@ -370,12 +371,25 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
       setLoadedComplete(Boolean(result.detailsComplete));
       setSupportsVerses(result.supportsVerses !== false);
       setSaveAcknowledged(true);
+      onItemSaved?.(result);
       return result;
     } catch (err) {
       setError(err.message);
       throw err;
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveOnly = async () => {
+    try {
+      if (isDateBeforeToday(order.estimated_delivery_date)) {
+        setError('תאריך אספקה לא יכול להיות בעבר — יש לבחור מהיום והלאה.');
+        return null;
+      }
+      return await persist();
+    } catch {
+      return null;
     }
   };
 
@@ -440,6 +454,7 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
   useImperativeHandle(ref, () => ({
     isDirty: () => isDirty,
     save: persist,
+    saveOnly: handleSaveOnly,
     saveAndContinue: handleSaveAndContinue,
     skipToVerses: handleSkipToVerses,
     getTemplateKey: () => templateKeyForItem(item),
@@ -733,28 +748,47 @@ const OrderItemDetailsStep = forwardRef(function OrderItemDetailsStep({
               <IconBack />
             </button>
           )}
-          <button
-            type="submit"
-            className={`btn primary btn-with-icon details-nav-continue${
-              finishesOnDetails ? ' details-nav-finish' : ''
-            }`}
-            disabled={saving || finishing}
-            aria-label={
-              finishesOnDetails ? 'סיום הזמנה' : 'שמירה והמשך לפסוקים'
-            }
-          >
-            <span>
-              {saving || finishing
-                ? finishesOnDetails
-                  ? 'מסיים…'
-                  : 'שומר…'
-                : finishesOnDetails
-                  ? 'סיום הזמנה'
-                  : 'שמירה והמשך'}
-            </span>
-            {/* Continue chevron only when there is a next verses step */}
-            {continueToVerses ? <IconContinue /> : null}
-          </button>
+          <div className="details-nav-actions">
+            {finishesOnDetails ? (
+              <button
+                type="button"
+                className={`btn btn-with-icon details-nav-save${
+                  saveAcknowledged && !isDirty ? ' details-nav-save--saved' : ''
+                }`}
+                onClick={handleSaveOnly}
+                disabled={saving || finishing || !isDirty}
+                aria-label={saveAcknowledged && !isDirty ? 'נשמר' : 'שמירה'}
+                title={saveAcknowledged && !isDirty ? 'נשמר' : 'שמירה'}
+              >
+                <IconSave />
+                <span>{saving && !finishing ? 'שומר…' : saveAcknowledged && !isDirty ? 'נשמר' : 'שמירה'}</span>
+              </button>
+            ) : null}
+            <button
+              type="submit"
+              className={`btn primary btn-with-icon details-nav-continue${
+                finishesOnDetails ? ' details-nav-finish' : ''
+              }`}
+              disabled={saving || finishing}
+              aria-label={
+                finishesOnDetails ? 'סיום הזמנה' : 'שמירה והמשך לפסוקים'
+              }
+            >
+              <span>
+                {saving || finishing
+                  ? finishesOnDetails
+                    ? finishing
+                      ? 'מסיים…'
+                      : 'שומר…'
+                    : 'שומר…'
+                  : finishesOnDetails
+                    ? 'סיום הזמנה'
+                    : 'שמירה והמשך'}
+              </span>
+              {/* Continue chevron only when there is a next verses step */}
+              {continueToVerses ? <IconContinue /> : null}
+            </button>
+          </div>
         </nav>
       </form>
     </div>

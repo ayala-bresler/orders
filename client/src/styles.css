@@ -1304,10 +1304,11 @@ body {
 .corner-symbols-count-value,
 .corner-symbols-count-input {
   box-sizing: border-box;
-  min-width: 2.1rem;
-  width: 2.4rem;
+  width: 2ch;
+  min-width: 2ch;
+  max-width: 2ch;
   height: 1.45rem;
-  padding: 0 2px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1320,7 +1321,7 @@ body {
   font-variant-numeric: tabular-nums;
   font-family: inherit;
   color: var(--ink);
-  text-align: center;
+  text-align: center !important;
   -moz-appearance: textfield;
 }
 
@@ -3202,6 +3203,26 @@ html:has(.main-details) body {
   flex: 0 0 auto;
 }
 
+.details-nav-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.details-bottom-nav .details-nav-save {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.details-bottom-nav .details-nav-save--saved {
+  color: #2e7d32;
+  border-color: rgba(46, 125, 50, 0.35);
+}
+
 .details-bottom-nav .details-nav-continue {
   flex: 0 1 auto;
   min-width: 160px;
@@ -4423,7 +4444,7 @@ html:has(.main-model-picker) body {
   border: 1px solid var(--line);
   background: #fff;
   color: var(--ink);
-  max-width: 12rem;
+  max-width: min(22rem, 70vw);
   overflow: hidden;
   text-overflow: ellipsis;
 }

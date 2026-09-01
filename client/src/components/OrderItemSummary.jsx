@@ -21,8 +21,8 @@ export default function OrderItemSummary({ item, size = 'default' }) {
         </BidiText>
       ) : null}
       {plate ? (
-        <BidiText as="div" className="order-item-plate" value={`קוטר צלחת ${plate}`}>
-          קוטר צלחת {plate}
+        <BidiText as="div" className="order-item-plate" value={`מידה ${plate}`}>
+          מידה {plate}
         </BidiText>
       ) : null}
     </div>

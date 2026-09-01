@@ -8,6 +8,7 @@ import ConfirmDialog from './components/ConfirmDialog.jsx';
 import StoreAuthGate from './components/StoreAuthGate.jsx';
 import {
   fetchOrderItemDetails,
+  fetchOrderItems,
   deleteOrderItem,
   identifyCustomer,
   refreshSession,
@@ -395,6 +396,21 @@ export default function App() {
     setFlash('');
   };
 
+  /** Reload order lines so picker / resume cards reflect latest details. */
+  const syncSessionItems = useCallback(async () => {
+    const orderId = session?.order?.order_id;
+    if (!orderId) return null;
+    try {
+      const { items } = await fetchOrderItems(orderId);
+      const next = Array.isArray(items) ? items : [];
+      setSession((s) => (s ? { ...s, items: next } : s));
+      return next;
+    } catch (err) {
+      console.warn('[session] failed to refresh order items:', err?.message || err);
+      return null;
+    }
+  }, [session?.order?.order_id]);
+
   const handleContinueExisting = (item) => {
     openVerseItem(item);
   };
@@ -436,12 +452,13 @@ export default function App() {
     );
   };
 
-  const backToProducts = () => {
-    const hasItems = session?.items && session.items.length > 0;
-    setStep(hasItems ? 'resume' : 'product');
+  const backToProducts = async () => {
     setActiveItem(null);
     setDetailsMayPromptDelete(false);
     setFlash('');
+    const items = await syncSessionItems();
+    const list = items ?? session?.items ?? [];
+    setStep(list.length > 0 ? 'resume' : 'product');
   };
 
   const requestCancelDetails = () => {
@@ -488,10 +505,11 @@ export default function App() {
     }
   };
 
-  const handleBackToExistingOrder = () => {
-    setStep('resume');
+  const handleBackToExistingOrder = async () => {
     setActiveItem(null);
     setFlash('');
+    await syncSessionItems();
+    setStep('resume');
   };
 
   const handleDeleteItem = async (itemId) => {
@@ -499,17 +517,14 @@ export default function App() {
     try {
       await deleteOrderItem(session.order.order_id, itemId);
       clearVerseDraft(session.order.order_id, itemId);
-      setSession((s) =>
-        s
-          ? {
-              ...s,
-              items: s.items.filter((item) => item.order_item_id !== itemId),
-            }
-          : s
+      const nextItems = await syncSessionItems();
+      const list = nextItems ?? (session.items || []).filter(
+        (item) => Number(item.order_item_id) !== Number(itemId)
       );
       setActiveItem((current) =>
-        current?.order_item_id === itemId ? null : current
+        Number(current?.order_item_id) === Number(itemId) ? null : current
       );
+      if (!list.length) setStep('product');
       setFlash('');
     } catch (err) {
       setFlash(err.message);
@@ -878,7 +893,8 @@ export default function App() {
             customerName={session.customer?.full_name}
             customerPhone={session.customer?.phone}
             onContinueItem={handleContinueExisting}
-            onNewProduct={() => {
+            onNewProduct={async () => {
+              await syncSessionItems();
               setStep('product');
               setFlash('');
             }}
@@ -906,6 +922,9 @@ export default function App() {
             onContinueToVerses={goToEditor}
             onFinishWithoutVerses={handleOrderComplete}
             onSupportsVersesChange={setItemSupportsVerses}
+            onItemSaved={() => {
+              syncSessionItems();
+            }}
             onDirtyChange={(dirty) => {
               if (dirty) setDetailsMayPromptDelete(false);
             }}

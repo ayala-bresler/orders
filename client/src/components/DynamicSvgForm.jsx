@@ -156,6 +156,7 @@ function CornerSymbolsControls({ corner, entry, onPatch }) {
               min={0}
               max={SYMBOL_COUNT_MAX}
               step={1}
+              size={2}
               value={count}
               aria-label={`כמות חופשית — ${corner}`}
               onChange={(e) => {
