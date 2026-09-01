@@ -12,6 +12,7 @@
 const express = require('express');
 const orderService = require('../services/orderService');
 const catalogService = require('../services/catalogService');
+const customerService = require('../services/customerService');
 const svgService = require('../services/svgService');
 const templateResolver = require('../services/templateResolver');
 const { modelSkuPrefix, shortSkuFromFull } = require('../utils/modelSku');
@@ -23,6 +24,20 @@ function ids(req) {
   const itemId = Number(req.params.itemId);
   return { orderId, itemId, valid: Number.isInteger(orderId) && Number.isInteger(itemId) };
 }
+
+/** List order lines (for resume / model-picker after details changes). */
+router.get('/:orderId/items', async (req, res, next) => {
+  try {
+    const orderId = Number(req.params.orderId);
+    if (!Number.isInteger(orderId)) {
+      return res.status(400).json({ error: 'מזהה הזמנה שגוי.' });
+    }
+    const items = await customerService.getOrderItems(orderId);
+    res.json({ items });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // Add a selected product (or model) to an order.
 router.post('/:orderId/items', async (req, res, next) => {

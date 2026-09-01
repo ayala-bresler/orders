@@ -19,7 +19,7 @@ export const SYMBOL_SIDES_LABELS = {
 };
 
 /** Soft ceiling only (runaway guard) — UI accepts free N up to this. */
-export const SYMBOL_COUNT_MAX = 999;
+export const SYMBOL_COUNT_MAX = 99;
 
 /** @deprecated kept for HMR compatibility with older form builds */
 export const SYMBOL_COUNT_OPTIONS = [0, 1, 2, 3];

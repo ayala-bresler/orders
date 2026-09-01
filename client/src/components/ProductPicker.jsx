@@ -1,11 +1,23 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { fetchSelectableModels, modelImageUrl, addOrderItem } from '../api.js';
 import { IconBack } from './Icons.jsx';
-import { mainModelName } from '../utils/orderItemDisplay.js';
+import {
+  formatItemPlateDiameter,
+  formatProductSummaryLine,
+  mainModelName,
+  orderItemImageModelCode,
+} from '../utils/orderItemDisplay.js';
 import {
   isSpecialTextModel,
   SPECIAL_MODEL_DISPLAY_NAME,
 } from '../utils/modelScopes.js';
+
+function itemPickerLabel(item) {
+  const summary = formatProductSummaryLine(item, orderItemImageModelCode(item));
+  const plate = formatItemPlateDiameter(item);
+  if (summary && plate) return `${summary} · ${plate}`;
+  return summary || mainModelName(item);
+}
 
 const GRID_GAP = 12;
 const BANNER_HEIGHT = 34;
@@ -139,7 +151,9 @@ export default function ProductPicker({
             <span>חזרה להזמנה</span>
           </button>
           <div className="model-picker-order-names">
-            {existingItems.map((item) => (
+            {existingItems.map((item) => {
+              const label = itemPickerLabel(item);
+              return (
               <button
                 key={item.order_item_id}
                 type="button"
@@ -149,13 +163,14 @@ export default function ProductPicker({
                 onClick={() => onOpenItem?.(item)}
                 title={
                   item.status === 'completed'
-                    ? `${mainModelName(item)} — ההזמנה נשלחה`
-                    : mainModelName(item)
+                    ? `${label} — ההזמנה נשלחה`
+                    : label
                 }
               >
-                {mainModelName(item)}
+                {label}
               </button>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

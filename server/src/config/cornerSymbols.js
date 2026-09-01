@@ -30,7 +30,7 @@ const SYMBOL_SIDES_LABELS = {
  * Soft ceiling only (runaway guard). UI accepts any count up to this;
  * placement uses even spacing in the free gap for any N ≥ 1.
  */
-const SYMBOL_COUNT_MAX = 999;
+const SYMBOL_COUNT_MAX = 99;
 
 const SYMBOL_BASE_RADIUS = 4.2;
 

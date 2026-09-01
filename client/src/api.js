@@ -200,6 +200,11 @@ export async function deleteOrderItem(orderId, itemId) {
   );
 }
 
+/** Fresh list of order lines (accessories, plate, status) for picker / resume. */
+export async function fetchOrderItems(orderId) {
+  return toJson(await apiFetch(`/api/orders/${orderId}/items`));
+}
+
 /** Load the immutable master template + editable field descriptors. */
 export async function fetchTemplate({ orderId, orderItemId, sizeCode, productTypeCode } = {}) {
   const params = new URLSearchParams();
