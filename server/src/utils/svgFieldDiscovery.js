@@ -56,8 +56,10 @@ function readSortOrder(node, serverField, index) {
     if (Number.isFinite(n)) return n;
   }
   if (serverField?.sortOrder != null) return serverField.sortOrder;
-  if (serverField?.ring === 'outer') return index * 10;
-  if (serverField?.ring === 'inner') return index * 10 + 1;
+  // Document order is the corner-pair layout. A shared href such as
+  // #SVGID_x5F_1_x5F_ exists in every size file but only matches the size-12
+  // field table. Scaling that one node by its legacy ring pushed it to the
+  // end and slid the following verses off their original circles.
   return index;
 }
 

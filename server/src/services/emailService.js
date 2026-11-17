@@ -105,7 +105,55 @@ async function createTransport(cfg) {
     greetingTimeout: 15_000,
     socketTimeout: 60_000,
     auth: { user: cfg.user, pass: cfg.pass },
+    pool: true,
+    maxConnections: 2,
+    maxMessages: 100,
   });
+}
+
+let sharedTransport = null;
+let sharedTransportKey = '';
+let sharedTransportPromise = null;
+
+function smtpCacheKey(cfg) {
+  return [cfg.host, cfg.port, cfg.secure ? '1' : '0', cfg.user, cfg.pass].join('\n');
+}
+
+function closeSharedTransport() {
+  const current = sharedTransport;
+  sharedTransport = null;
+  sharedTransportKey = '';
+  sharedTransportPromise = null;
+  if (current && typeof current.close === 'function') {
+    try { current.close(); } catch { /* already closed */ }
+  }
+}
+
+function getSharedTransport(cfg) {
+  const key = smtpCacheKey(cfg);
+  if (sharedTransportKey === key && sharedTransportPromise) return sharedTransportPromise;
+  closeSharedTransport();
+  sharedTransportKey = key;
+  sharedTransportPromise = createTransport(cfg).then((transport) => {
+    if (sharedTransportKey !== key) {
+      try { transport.close(); } catch { /* replaced */ }
+      return transport;
+    }
+    sharedTransport = transport;
+    return transport;
+  }).catch((err) => {
+    if (sharedTransportKey === key) {
+      sharedTransportKey = '';
+      sharedTransportPromise = null;
+    }
+    throw err;
+  });
+  return sharedTransportPromise;
+}
+
+async function sendWithSharedTransport(cfg, mail) {
+  const transport = await getSharedTransport(cfg);
+  await transport.sendMail(mail);
 }
 
 function toBase64(content) {
@@ -393,7 +441,13 @@ function buildEmailHtml(meta = {}) {
 function buildEmailSubject(meta = {}) {
   const name = String(meta.customerName || '').trim();
   const phone = String(meta.customerPhone || '').trim();
-  const who = [name, phone].filter(Boolean).join(' ').trim();
+  const storeName = String(meta.storeName || '').trim();
+  // Admin subject only. The store copy sets kind and keeps the previous subject.
+  const nameWithStore =
+    name && storeName && meta.kind !== 'store-order-copy'
+      ? `${name} (${storeName})`
+      : name;
+  const who = [nameWithStore, phone].filter(Boolean).join(' ').trim();
 
   // Admin / store: subject is the customer identity; resends are marked explicitly.
   if (who) {
@@ -459,8 +513,7 @@ async function sendDxfEmail(opts) {
 
   if (hasSmtp(cfg)) {
     try {
-      const transport = await createTransport(cfg);
-      await transport.sendMail(mail);
+      await sendWithSharedTransport(cfg, mail);
     } catch (err) {
       const timeoutErr = smtpTimeoutError(err);
       if (timeoutErr) throw timeoutErr;
@@ -494,7 +547,11 @@ async function verifySmtp() {
   const cfg = getConfig();
   if (hasSmtp(cfg)) {
     const transport = await createTransport(cfg);
-    await transport.verify();
+    try {
+      await transport.verify();
+    } finally {
+      try { transport.close(); } catch { /* ignore */ }
+    }
     return { ok: true, user: cfg.user, via: 'smtp' };
   }
   if (cfg.resendApiKey) {
@@ -554,8 +611,7 @@ async function sendPdfToAddress({ to, pdfFilename, pdfContent, pdfFiles, meta })
   };
 
   if (hasSmtp(cfg)) {
-    const transport = await createTransport(cfg);
-    await transport.sendMail(mail);
+    await sendWithSharedTransport(cfg, mail);
     return {
       sentTo: recipient,
       via: 'system-smtp',

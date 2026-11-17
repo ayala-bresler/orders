@@ -18,6 +18,9 @@ const HEBREW_FONT_PATH =
   process.env.ORDER_PDF_FONT_PATH ||
   path.resolve(__dirname, '..', '..', 'fonts', 'NotoSansHebrew.ttf');
 
+let cachedTemplateBytes = null;
+let cachedFontBytes = null;
+
 const STORAGE_DIR =
   process.env.STORAGE_DIR ||
   path.resolve(__dirname, '..', '..', '..', 'saved', 'orders');
@@ -45,7 +48,9 @@ const PDF_FIELD_MAP = {
   pointer: 'Text Field 41',
   pointerCheck: 'Check Box 8',
   deliveryDate: 'Text Field 33',
-  orderDate: 'Text Field 32',
+  // New template header: תאריך is Text Field 50; Text Field 32 sits beside שם החנות.
+  orderDate: 'Text Field 50',
+  storeName: 'Text Field 32',
   parochetHeight: 'Text Field 34',
   verses: {
     // ימין למעלה — שורה 1 = עליון, שורה 2 = תחתון
@@ -158,7 +163,15 @@ function modelNameOnly(modelCode, modelNameByCode) {
   return modelNameByCode[modelCode] || '';
 }
 
-function buildPdfPayload({ customerName, customerPhone, order, item, values, modelNameByCode }) {
+function buildPdfPayload({
+  customerName,
+  customerPhone,
+  storeName,
+  order,
+  item,
+  values,
+  modelNameByCode,
+}) {
   const resolveModelName = (code) => modelNameOnly(code, modelNameByCode);
   const hasMainModel = Boolean(String(item?.model || '').trim());
 
@@ -186,6 +199,7 @@ function buildPdfPayload({ customerName, customerPhone, order, item, values, mod
 
   const payload = {
     customerName: customerName || '',
+    storeName: storeName || '',
     phone: String(customerPhone || '').trim(),
     model: resolveModelName(item.model),
     // Plate diameter applies to עץ חיים and to כתר-only (and other accessory) orders.
@@ -222,22 +236,31 @@ function buildPdfPayload({ customerName, customerPhone, order, item, values, mod
   return payload;
 }
 
-async function fillOrderPdf(payload) {
-  if (!fs.existsSync(TEMPLATE_PATH)) {
-    const err = new Error(`תבנית PDF לא נמצאה: ${TEMPLATE_PATH}`);
+function readCachedFile(filePath, kind) {
+  if (kind === 'template' && cachedTemplateBytes) return cachedTemplateBytes;
+  if (kind === 'font' && cachedFontBytes) return cachedFontBytes;
+  if (!fs.existsSync(filePath)) {
+    const err = new Error(
+      kind === 'template'
+        ? `תבנית PDF לא נמצאה: ${filePath}`
+        : `גופן עברי ל-PDF לא נמצא: ${filePath}`
+    );
     err.status = 500;
     throw err;
   }
-  if (!fs.existsSync(HEBREW_FONT_PATH)) {
-    const err = new Error(`גופן עברי ל-PDF לא נמצא: ${HEBREW_FONT_PATH}`);
-    err.status = 500;
-    throw err;
-  }
+  const bytes = fs.readFileSync(filePath);
+  if (kind === 'template') cachedTemplateBytes = bytes;
+  else cachedFontBytes = bytes;
+  return bytes;
+}
 
-  const bytes = fs.readFileSync(TEMPLATE_PATH);
-  const doc = await PDFDocument.load(bytes);
+async function fillOrderPdf(payload) {
+  const templateBytes = readCachedFile(TEMPLATE_PATH, 'template');
+  const fontBytes = readCachedFile(HEBREW_FONT_PATH, 'font');
+  // A new document per order, so cached bytes are never shared as filled state.
+  const doc = await PDFDocument.load(Buffer.from(templateBytes));
   doc.registerFontkit(fontkit);
-  const hebrewFont = await doc.embedFont(fs.readFileSync(HEBREW_FONT_PATH));
+  const hebrewFont = await doc.embedFont(Buffer.from(fontBytes));
   const form = doc.getForm();
   form.updateFieldAppearances(hebrewFont);
 
@@ -264,6 +287,7 @@ async function fillOrderPdf(payload) {
 
   setText(form, PDF_FIELD_MAP.deliveryDate, payload.deliveryDate, hebrewFont, { forceDir: 'ltr' });
   setText(form, PDF_FIELD_MAP.orderDate, payload.orderDate, hebrewFont, { forceDir: 'ltr' });
+  setText(form, PDF_FIELD_MAP.storeName, payload.storeName, hebrewFont);
   setText(form, PDF_FIELD_MAP.parochetHeight, payload.parochetHeight, hebrewFont, { forceDir: 'ltr' });
 
   // Verses are always Hebrew — force RTL (logical order + right align).
@@ -281,7 +305,7 @@ async function fillOrderPdf(payload) {
     setNotesLine(form, fieldName, line || '', hebrewFont, 12);
   });
 
-  form.flatten();
+  // Keep the AcroForm so the mailed PDF stays editable, same as the interactive template.
   return Buffer.from(await doc.save());
 }
 
@@ -360,6 +384,7 @@ async function exportOrderItemPdf(orderId, itemId, deps = {}) {
   const payload = buildPdfPayload({
     customerName: details.customerName,
     customerPhone: details.customerPhone,
+    storeName: details.storeName,
     order: details.order,
     item,
     values,

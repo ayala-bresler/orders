@@ -9,6 +9,7 @@
  *  POST     /api/orders/:orderId/items/:itemId/dxf/email -> DXF by email
  */
 
+const { performance } = require('perf_hooks');
 const express = require('express');
 const orderService = require('../services/orderService');
 const catalogService = require('../services/catalogService');
@@ -336,6 +337,7 @@ async function exportDxfEmailHandler(req, res, next) {
       orderId,
       customerName: details?.customerName || null,
       customerPhone: details?.customerPhone || null,
+      storeName: details?.storeName || null,
       modelName: modelName || null,
       // Size only with a main model (matches email rule / PDF דגם presence).
       plateSize: hasMainModel(item) ? (item.plate_diameter ?? null) : null,
@@ -343,48 +345,56 @@ async function exportDxfEmailHandler(req, res, next) {
       isResend,
     };
 
-    const { sentTo, attachmentCount } = await sendDxfEmail({
+    const mailStarted = performance.now();
+    const adminTask = sendDxfEmail({
       quarterFiles,
       // Admin keeps the order-form PDF (not the verses print page).
       pdfFilename: pdfResult ? `order-${orderId}-item-${itemId}.pdf` : null,
       pdfContent: pdfResult?.pdfBytes || null,
       meta: mailMeta,
-    });
+    }).then(
+      (value) => ({ ok: true, value }),
+      (error) => ({ ok: false, error })
+    );
 
-    // Store mailbox: order-form PDF + verses-print PDF (two files).
-    let storeEmailResult = null;
-    try {
-      const { sendStoreOrderPdfCopy } = require('../stores/storeSmtpService');
-      const storeId = req.store?.storeId || null;
-      const storePdfFiles = [];
-      if (pdfResult?.pdfBytes) {
-        storePdfFiles.push({
-          filename: `order-${orderId}-item-${itemId}.pdf`,
-          content: pdfResult.pdfBytes,
-        });
-      }
-      if (versesPrintPdf?.pdfBytes) {
-        storePdfFiles.push({
-          filename: `order-${orderId}-item-${itemId}-verses.pdf`,
-          content: versesPrintPdf.pdfBytes,
-        });
-      }
-      storeEmailResult = await sendStoreOrderPdfCopy({
-        storeId,
-        pdfFiles: storePdfFiles,
-        meta: {
-          ...mailMeta,
-          kind: 'store-order-copy',
-        },
+    // Store mailbox: same order PDF plus the verses PDF. Sent together with the admin mail.
+    const { sendStoreOrderPdfCopy } = require('../stores/storeSmtpService');
+    const storeId = req.store?.storeId || null;
+    const storePdfFiles = [];
+    if (pdfResult?.pdfBytes) {
+      storePdfFiles.push({
+        filename: `order-${orderId}-item-${itemId}.pdf`,
+        content: pdfResult.pdfBytes,
       });
-    } catch (storeMailErr) {
+    }
+    if (versesPrintPdf?.pdfBytes) {
+      storePdfFiles.push({
+        filename: `order-${orderId}-item-${itemId}-verses.pdf`,
+        content: versesPrintPdf.pdfBytes,
+      });
+    }
+    const storeTask = sendStoreOrderPdfCopy({
+      storeId,
+      pdfFiles: storePdfFiles,
+      meta: {
+        ...mailMeta,
+        kind: 'store-order-copy',
+      },
+    }).catch((storeMailErr) => {
       console.warn('[store-smtp] copy email failed:', storeMailErr.message);
-      storeEmailResult = {
+      return {
         skipped: true,
         reason: 'send_failed',
         error: storeMailErr.message,
       };
-    }
+    });
+
+    const [adminOutcome, storeEmailResult] = await Promise.all([adminTask, storeTask]);
+    console.log(
+      `[order-mail] dxf order=${orderId} item=${itemId} mail=${Math.round(performance.now() - mailStarted)}ms`
+    );
+    if (!adminOutcome.ok) throw adminOutcome.error;
+    const { sentTo, attachmentCount } = adminOutcome.value;
 
     const completed = await orderService.completeOrderItem(orderId, itemId);
     // Ensure DXF/PDF/SVG snapshots are gone even if delete missed a name pattern.
@@ -516,6 +526,7 @@ async function completeOrderHandler(req, res, next) {
       orderId,
       customerName: details.customerName || null,
       customerPhone: details.customerPhone || null,
+      storeName: details.storeName || null,
       modelName: modelName || null,
       plateSize: hasMainModel(item) ? (item.plate_diameter ?? null) : null,
       accessoryLine: accessoryLine || null,
@@ -531,31 +542,39 @@ async function completeOrderHandler(req, res, next) {
       err.status = 503;
       throw err;
     }
-    const adminEmail = await sendPdfToAddress({
+    const mailStarted = performance.now();
+    const adminTask = sendPdfToAddress({
       to: cfg.recipient,
       pdfFiles: [{ filename: pdfFilename, content: pdfResult.pdfBytes }],
       meta: mailMeta,
-    });
+    }).then(
+      (value) => ({ ok: true, value }),
+      (error) => ({ ok: false, error })
+    );
 
-    // Store: same order-form PDF only.
-    let storeEmailResult = null;
-    try {
-      storeEmailResult = await sendStoreOrderPdfCopy({
-        storeId: req.store?.storeId || null,
-        pdfFiles: [{ filename: pdfFilename, content: pdfResult.pdfBytes }],
-        meta: {
-          ...mailMeta,
-          kind: 'store-order-copy',
-        },
-      });
-    } catch (storeMailErr) {
+    // Store: the same order-form PDF, sent together with the admin mail.
+    const storeTask = sendStoreOrderPdfCopy({
+      storeId: req.store?.storeId || null,
+      pdfFiles: [{ filename: pdfFilename, content: pdfResult.pdfBytes }],
+      meta: {
+        ...mailMeta,
+        kind: 'store-order-copy',
+      },
+    }).catch((storeMailErr) => {
       console.warn('[store-smtp] complete copy email failed:', storeMailErr.message);
-      storeEmailResult = {
+      return {
         skipped: true,
         reason: 'send_failed',
         error: storeMailErr.message,
       };
-    }
+    });
+
+    const [adminOutcome, storeEmailResult] = await Promise.all([adminTask, storeTask]);
+    console.log(
+      `[order-mail] complete order=${orderId} item=${itemId} mail=${Math.round(performance.now() - mailStarted)}ms`
+    );
+    if (!adminOutcome.ok) throw adminOutcome.error;
+    const adminEmail = adminOutcome.value;
 
     const completed = await orderService.completeOrderItem(orderId, itemId);
     try {
