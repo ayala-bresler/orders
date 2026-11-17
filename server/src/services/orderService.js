@@ -389,10 +389,12 @@ async function getOrderItemDetails(orderId, orderItemId) {
   const { rows } = await query(
     `SELECT o.order_id, o.customer_id, o.total_amount, o.status, o.order_date${orderSelectFragment()},
             c.address AS customer_address, c.full_name AS customer_name, c.phone AS customer_phone,
+            s.store_name AS store_name,
             oi.${PK} AS order_item_id, oi.product_code, oi.status AS item_status, ${itemCols}
        FROM orders o
        JOIN order_items oi ON oi.order_id = o.order_id
        LEFT JOIN customers c ON c.customer_id = o.customer_id
+       LEFT JOIN stores s ON s.store_id = c.store_id
       WHERE o.order_id = $1 AND oi.${PK} = $2`,
     [orderId, orderItemId]
   );
@@ -412,6 +414,7 @@ async function getOrderItemDetails(orderId, orderItemId) {
     meta,
     customerName: row.customer_name || null,
     customerPhone: row.customer_phone || null,
+    storeName: row.store_name || null,
     detailsComplete: isDetailsComplete(order, item),
     supportsVerses,
     fieldDefs: {
