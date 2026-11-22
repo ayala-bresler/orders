@@ -2621,22 +2621,66 @@ body {
   transform: rotate(180deg);
 }
 .my-customers-table th.col-actions,
-.my-customers-table td.col-actions {
+.my-customers-table td.col-actions,
+.my-customers-box--main .my-customers-table th.col-actions,
+.my-customers-box--main .my-customers-table td.col-actions {
   width: 10%;
+  text-align: start;
+  padding-inline: 6px;
+}
+.orders-empty-cell {
   text-align: center;
-  padding-inline: 0.25rem;
+  color: #6b6258;
+  cursor: default;
+}
+.status-col-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.status-filter-sign {
+  gap: 0;
+}
+.status-filter-icons {
+  position: fixed;
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(36, 31, 31, 0.16);
+}
+button.order-status-icon.is-filtered-out {
+  opacity: 0.32;
+}
+button.order-status-icon.is-filtered-out:hover:not(:disabled) {
+  opacity: 0.75;
 }
 .my-customers-table th.col-status,
-.my-customers-table td.col-status {
+.my-customers-table td.col-status,
+.my-customers-box--main .my-customers-table th.col-status,
+.my-customers-box--main .my-customers-table td.col-status {
   width: 16%;
   text-align: center;
   white-space: nowrap;
+  padding-inline: 6px;
 }
 .order-status-icons {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 2px;
+}
+.my-customers-table td.col-status {
+  position: relative;
+}
+.my-customers-table td.col-status .order-status-icons {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
 }
 .order-status-icon {
   display: inline-flex;

@@ -81,8 +81,11 @@ export default function OrderStatusCell({
   items,
   disabled = false,
   onAdvance,
+  shownStatuses = null,
 }) {
-  const icons = lineIcons(orderId, orderStatus, items);
+  const icons = lineIcons(orderId, orderStatus, items).filter(
+    (icon) => !shownStatuses || shownStatuses.has(icon.display)
+  );
   const [dialog, setDialog] = useState(null);
   const [choice, setChoice] = useState('finished');
   const [menuOpen, setMenuOpen] = useState(false);
