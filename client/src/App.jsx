@@ -34,6 +34,7 @@ import { useInactivityTimeout } from './utils/useInactivityTimeout.js';
 import { useWizardHistory } from './utils/useWizardHistory.js';
 import { MOBILE_LAYOUT_MQ } from './utils/svgLiveUpdate.js';
 import { formatOrderHeading } from './utils/orderNumberDisplay.js';
+import { isResendItemStatus } from './utils/orderStatus.js';
 import BidiText from './components/BidiText.jsx';
 
 const STEPS = ['identify', 'product', 'details', 'editor'];
@@ -918,7 +919,7 @@ export default function App() {
             ref={detailsRef}
             orderId={session.order.order_id}
             itemId={activeItem.order_item_id}
-            orderSent={activeItem.status === 'completed'}
+            orderSent={isResendItemStatus(activeItem.status)}
             onContinueToVerses={goToEditor}
             onFinishWithoutVerses={handleOrderComplete}
             onSupportsVersesChange={setItemSupportsVerses}
@@ -938,7 +939,7 @@ export default function App() {
             orderId={session.order.order_id}
             itemId={activeItem.order_item_id}
             templateKey={editorTemplateKey}
-            orderSent={activeItem.status === 'completed'}
+            orderSent={isResendItemStatus(activeItem.status)}
             onEditOrderDetails={goToDetails}
             onOrderComplete={handleOrderComplete}
           />

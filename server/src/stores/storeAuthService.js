@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const { promisify } = require('util');
 const { query } = require('../db');
+const { parseItemStatusRows } = require('../utils/orderStatus');
 // AES helpers kept in aesCrypto.js for any legacy encrypted rows; no longer used here.
 
 const scrypt = promisify(crypto.scrypt);
@@ -270,11 +271,10 @@ async function clearAllStoreSmtpCredentials() {
   );
 }
 
-const OPEN_ORDER_STATUSES = ['draft', 'open'];
-
 /**
- * Store “הזמנות” list: name, manual order # (phone), auto order_id, model name.
- * Sorted by manual order number.
+ * Store orders list: one row per manual order (customers.phone).
+ * Uses the latest order even after approval and for legacy statuses.
+ * `items` is every product line so the list can show one status icon each.
  */
 async function listStoreCustomers(storeId) {
   const { rows } = await query(
@@ -285,6 +285,8 @@ async function listStoreCustomers(storeId) {
             c.address,
             c.created_at,
             o.order_id,
+            o.order_status,
+            lines.items,
             COALESCE(
               NULLIF(BTRIM(m.model_name), ''),
               CASE WHEN oi.has_crown THEN NULLIF(BTRIM(cm.model_name), '') END,
@@ -297,15 +299,26 @@ async function listStoreCustomers(storeId) {
             oi.plate_diameter
        FROM customers c
        LEFT JOIN LATERAL (
-         SELECT ord.order_id
+         SELECT ord.order_id, ord.status AS order_status
            FROM orders ord
           WHERE ord.customer_id = c.customer_id
-          ORDER BY
-            CASE WHEN ord.status = ANY($2) THEN 0 ELSE 1 END,
-            ord.order_date DESC,
-            ord.order_id DESC
+          ORDER BY ord.order_date DESC NULLS LAST, ord.order_id DESC
           LIMIT 1
        ) o ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(
+                  json_agg(
+                    json_build_object(
+                      'order_item_id', line.item_id,
+                      'status', line.status
+                    )
+                    ORDER BY line.item_id
+                  ),
+                  '[]'::json
+                ) AS items
+           FROM order_items line
+          WHERE line.order_id = o.order_id
+       ) lines ON TRUE
        LEFT JOIN LATERAL (
          SELECT oi.model,
                 oi.plate_diameter,
@@ -334,9 +347,14 @@ async function listStoreCustomers(storeId) {
           ELSE c.phone
         END ASC,
         c.customer_id ASC`,
-    [Number(storeId), OPEN_ORDER_STATUSES]
+    [Number(storeId)]
   );
-  return rows;
+  return rows.map((row) => ({
+    ...row,
+    order_id: row.order_id || null,
+    order_status: row.order_status || null,
+    items: parseItemStatusRows(row.items),
+  }));
 }
 
 /** Permanently delete a store customer (and cascaded orders/items) + storage folders. */

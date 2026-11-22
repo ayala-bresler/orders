@@ -7,6 +7,7 @@ import { modelImageUrl } from '../api.js';
 import { IconTrash } from './Icons.jsx';
 import OrderSentMarker from './OrderSentMarker.jsx';
 import { formatOrderRef } from '../utils/orderNumberDisplay.js';
+import { isResendItemStatus } from '../utils/orderStatus.js';
 import BidiText from './BidiText.jsx';
 
 const GRID_GAP = 16;
@@ -158,7 +159,7 @@ export default function ExistingOrderStep({
         {items.map((item) => {
           const imgSrc = itemImageSrc(item);
           const showImg = imgSrc && !brokenImages.has(item.order_item_id);
-          const completed = item.status === 'completed';
+          const completed = isResendItemStatus(item.status);
           return (
             <div
               className={`resume-card${completed ? ' resume-card--completed' : ''}`}

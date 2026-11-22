@@ -185,12 +185,14 @@ async function sendViaResend(cfg, { from, to, subject, text, html, attachments }
     to: [to],
     subject,
     text,
-    attachments: (attachments || []).map((a) => ({
-      filename: a.filename,
-      content: toBase64(a.content),
-    })),
   };
   if (html) payload.html = html;
+  if (attachments && attachments.length) {
+    payload.attachments = attachments.map((a) => ({
+      filename: a.filename,
+      content: toBase64(a.content),
+    }));
+  }
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -633,9 +635,50 @@ async function sendPdfToAddress({ to, pdfFilename, pdfContent, pdfFiles, meta })
   throw err;
 }
 
+/**
+ * Short RTL note with no attachment (status finished / sent).
+ */
+async function sendTextEmail({ to, subject, text }) {
+  const cfg = getConfig();
+  const recipient = String(to || '').trim();
+  if (!recipient) {
+    const err = new Error('חסרה כתובת נמען.');
+    err.status = 400;
+    throw err;
+  }
+  const body = String(text || subject || '').trim();
+  const mail = {
+    from: cfg.from || cfg.user,
+    to: recipient,
+    subject: String(subject || body),
+    text: rtlPlainLine(body),
+    html:
+      '<!DOCTYPE html><html lang="he" dir="rtl"><body dir="rtl" ' +
+      'style="margin:0;padding:16px;font-family:Arial,Helvetica,sans-serif;' +
+      'font-size:16px;line-height:1.55;color:#222;direction:rtl;text-align:right;">' +
+      `${escapeHtml(body)}</body></html>`,
+  };
+
+  if (hasSmtp(cfg)) {
+    await sendWithSharedTransport(cfg, mail);
+    return { sentTo: recipient, via: 'smtp' };
+  }
+  if (cfg.resendApiKey) {
+    await sendViaResend(cfg, mail);
+    return { sentTo: recipient, via: 'resend' };
+  }
+  const err = new Error(
+    'הגדרות שליחת מייל חסרות. הגדירו SMTP_HOST, SMTP_USER, SMTP_PASS ' +
+      '(או RESEND_API_KEY + RESEND_FROM).'
+  );
+  err.status = 503;
+  throw err;
+}
+
 module.exports = {
   sendDxfEmail,
   sendPdfToAddress,
+  sendTextEmail,
   verifySmtp,
   getConfig,
   buildEmailText,

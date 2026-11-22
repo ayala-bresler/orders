@@ -73,6 +73,20 @@ export async function fetchAdminCustomers(storeId) {
   return adminFetch(`/api/admin/customers${q}`);
 }
 
+export async function advanceAdminItemStatus(orderId, itemId, status) {
+  return adminFetch(`/api/admin/orders/${orderId}/items/${itemId}/status`, {
+    method: 'POST',
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function advanceAdminOrderStatus(orderId, status) {
+  return adminFetch(`/api/admin/orders/${orderId}/status`, {
+    method: 'POST',
+    body: JSON.stringify({ status }),
+  });
+}
+
 export async function selectAdminCustomer(customerId) {
   return adminFetch('/api/admin/select-customer', {
     method: 'POST',

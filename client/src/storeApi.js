@@ -78,6 +78,20 @@ export async function deleteMyCustomer(customerId) {
   });
 }
 
+export async function advanceStoreItemStatus(orderId, itemId, status) {
+  return storeFetch(`/api/stores/orders/${orderId}/items/${itemId}/status`, {
+    method: 'POST',
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function advanceStoreOrderStatus(orderId, status) {
+  return storeFetch(`/api/stores/orders/${orderId}/status`, {
+    method: 'POST',
+    body: JSON.stringify({ status }),
+  });
+}
+
 export async function selectMyCustomer(customerId) {
   return storeFetch('/api/stores/select-customer', {
     method: 'POST',

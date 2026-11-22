@@ -7,6 +7,9 @@
 const express = require('express');
 const { query } = require('../db');
 const customerService = require('../services/customerService');
+const orderService = require('../services/orderService');
+const { sendWorkflowStatusNotice } = require('../services/statusNotice');
+const { parseItemStatusRows } = require('../utils/orderStatus');
 const { withSession } = require('../services/sessionService');
 const {
   credentialsMatchAdmin,
@@ -196,6 +199,8 @@ router.get('/customers', requireAdminSession, async (req, res, next) => {
               c.created_at,
               s.store_name,
               o.order_id,
+              o.order_status,
+              lines.items,
               COALESCE(
                 NULLIF(BTRIM(m.model_name), ''),
                 CASE WHEN oi.has_crown THEN NULLIF(BTRIM(cm.model_name), '') END,
@@ -209,12 +214,26 @@ router.get('/customers', requireAdminSession, async (req, res, next) => {
          FROM customers c
          LEFT JOIN stores s ON s.store_id = c.store_id
          LEFT JOIN LATERAL (
-           SELECT ord.order_id
+           SELECT ord.order_id, ord.status AS order_status
              FROM orders ord
             WHERE ord.customer_id = c.customer_id
-            ORDER BY ord.order_date DESC, ord.order_id DESC
+            ORDER BY ord.order_date DESC NULLS LAST, ord.order_id DESC
             LIMIT 1
          ) o ON TRUE
+         LEFT JOIN LATERAL (
+           SELECT COALESCE(
+                    json_agg(
+                      json_build_object(
+                        'order_item_id', line.item_id,
+                        'status', line.status
+                      )
+                      ORDER BY line.item_id
+                    ),
+                    '[]'::json
+                  ) AS items
+             FROM order_items line
+            WHERE line.order_id = o.order_id
+         ) lines ON TRUE
          LEFT JOIN LATERAL (
            SELECT oi.model,
                   oi.plate_diameter,
@@ -256,6 +275,8 @@ router.get('/customers', requireAdminSession, async (req, res, next) => {
         store_name: r.store_name || null,
         created_at: r.created_at,
         order_id: r.order_id || null,
+        order_status: r.order_status || null,
+        items: parseItemStatusRows(r.items),
         model_name: r.model_name || null,
         plate_diameter: r.plate_diameter != null ? Number(r.plate_diameter) : null,
       })),
@@ -292,6 +313,36 @@ router.post('/select-customer', requireAdminSession, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+async function advanceStatus(req, res, next, itemId) {
+  try {
+    const orderId = Number(req.params.orderId);
+    const result = await orderService.advanceWorkflowStatus({
+      orderId,
+      itemId,
+      status: req.body?.status,
+      storeId: null,
+    });
+    const warnings = await sendWorkflowStatusNotice(result);
+    res.json({
+      ok: true,
+      orderId: result.orderId,
+      itemId: result.itemId,
+      status: result.status,
+      warnings,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+router.post('/orders/:orderId/items/:itemId/status', requireAdminSession, (req, res, next) => {
+  advanceStatus(req, res, next, req.params.itemId);
+});
+
+router.post('/orders/:orderId/status', requireAdminSession, (req, res, next) => {
+  advanceStatus(req, res, next, null);
 });
 
 module.exports = router;

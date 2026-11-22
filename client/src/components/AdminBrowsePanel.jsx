@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 import { applySessionFromIdentifyResult } from '../utils/sessionAuth.js';
 import {
+  advanceAdminItemStatus,
+  advanceAdminOrderStatus,
   createAdminStore,
   fetchAdminCustomers,
   fetchAdminStores,
   selectAdminCustomer,
 } from '../adminApi.js';
+import OrderStatusCell from './OrderStatusCell.jsx';
 import { formatItemPlateDiameter } from '../utils/orderItemDisplay.js';
 import { detectTextDir } from '../utils/textDirection.js';
 import BidiText from './BidiText.jsx';
@@ -87,6 +90,25 @@ export default function AdminBrowsePanel({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, mode, selectedStoreId]);
+
+  const advanceStatus = async ({ orderId, itemId, status }) => {
+    const data = itemId
+      ? await advanceAdminItemStatus(orderId, itemId, status)
+      : await advanceAdminOrderStatus(orderId, status);
+    setCustomers((prev) =>
+      prev.map((row) => {
+        if (Number(row.order_id) !== Number(orderId)) return row;
+        if (!itemId) return { ...row, order_status: data.status };
+        return {
+          ...row,
+          items: (row.items || []).map((it) =>
+            Number(it.order_item_id) === Number(itemId) ? { ...it, status: data.status } : it
+          ),
+        };
+      })
+    );
+    return data.warnings || [];
+  };
 
   const pickCustomer = async (customer) => {
     setBusy(true);
@@ -291,6 +313,7 @@ export default function AdminBrowsePanel({
                     <th className="col-model">דגם</th>
                     <th className="col-phone">מספר הזמנה</th>
                     {!selectedStoreId ? <th className="col-store">חנות</th> : null}
+                    <th className="col-status">סטטוס</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -330,6 +353,23 @@ export default function AdminBrowsePanel({
                           </BidiText>
                         </td>
                       ) : null}
+                      <td className="col-status" onClick={(e) => e.stopPropagation()}>
+                        <OrderStatusCell
+                          orderId={c.order_id}
+                          orderStatus={c.order_status}
+                          items={c.items}
+                          disabled={busy}
+                          onAdvance={async (payload) => {
+                            setError('');
+                            try {
+                              return await advanceStatus(payload);
+                            } catch (err) {
+                              setError(err.message);
+                              throw err;
+                            }
+                          }}
+                        />
+                      </td>
                     </tr>
                   ))}
                 </tbody>

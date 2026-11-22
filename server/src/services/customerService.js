@@ -22,16 +22,18 @@ function normalizeName(name) {
   return String(name || '').trim().replace(/\s+/g, ' ');
 }
 
-const OPEN_STATUSES = ['draft', 'open'];
-
+/**
+ * The manual order (customers.phone) keeps a single order.
+ * Reuse it after approval and for legacy statuses — do not open another draft.
+ */
 async function getLatestOpenOrder(customerId) {
   const { rows } = await query(
     `SELECT order_id, customer_id, status, order_date, total_amount
        FROM orders
-      WHERE customer_id = $1 AND status = ANY($2)
-      ORDER BY order_date DESC
+      WHERE customer_id = $1
+      ORDER BY order_date DESC NULLS LAST, order_id DESC
       LIMIT 1`,
-    [customerId, OPEN_STATUSES]
+    [customerId]
   );
   return rows[0] || null;
 }
@@ -39,7 +41,7 @@ async function getLatestOpenOrder(customerId) {
 async function createDraftOrder(customerId) {
   const { rows } = await query(
     `INSERT INTO orders (customer_id, status)
-     VALUES ($1, 'draft')
+     VALUES ($1, 'pending_approval')
      RETURNING order_id, customer_id, status, order_date, total_amount`,
     [customerId]
   );
@@ -90,7 +92,11 @@ async function getOrderItems(orderId) {
        LEFT JOIN models pm ON pm.model_code = oi.pointer_model
       WHERE oi.order_id = $1
       ORDER BY
-        CASE WHEN COALESCE(oi.status, 'open') = 'completed' THEN 1 ELSE 0 END,
+        CASE
+          WHEN lower(btrim(COALESCE(oi.status, ''))) IN
+               ('completed', 'approved', 'finished', 'sent')
+          THEN 1 ELSE 0
+        END,
         oi.item_id`;
 
   try {
