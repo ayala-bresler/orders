@@ -28,7 +28,7 @@ function IconCaretDown() {
   return (
     <svg
       className="status-pick-caret"
-      viewBox="0 0 24 24"
+      viewBox="4.8 7.6 14.4 8.8"
       fill="none"
       stroke="currentColor"
       strokeWidth="2.4"
@@ -81,8 +81,11 @@ export default function OrderStatusCell({
   items,
   disabled = false,
   onAdvance,
+  shownStatuses = null,
 }) {
-  const icons = lineIcons(orderId, orderStatus, items);
+  const icons = lineIcons(orderId, orderStatus, items).filter(
+    (icon) => !shownStatuses || shownStatuses.has(icon.display)
+  );
   const [dialog, setDialog] = useState(null);
   const [choice, setChoice] = useState('finished');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -178,17 +181,15 @@ export default function OrderStatusCell({
             {dialog.display === 'approved' ? (
               <>
                 <p className="status-advance-message">
-                  להעביר את הסטטוס ל<span className={`status-word-with-caret status-pick-value--${choice}`}><span className="status-pick-value">{choice === 'sent' ? 'נשלח' : 'סיים'}</span><button
-                      type="button"
-                      className={`status-inline-caret${menuOpen ? ' is-open' : ''}`}
-                      aria-haspopup="listbox"
-                      aria-expanded={menuOpen}
-                      aria-label="בחירה בין סיים לנשלח"
-                      disabled={saving}
-                      onClick={() => setMenuOpen((open) => !open)}
-                    >
-                      <IconCaretDown />
-                    </button></span>?
+                  להעביר את הסטטוס ל<button
+                    type="button"
+                    className={`status-word-with-caret status-pick-value--${choice}${menuOpen ? ' is-open' : ''}`}
+                    aria-haspopup="listbox"
+                    aria-expanded={menuOpen}
+                    aria-label="בחירה בין סיים לנשלח"
+                    disabled={saving}
+                    onClick={() => setMenuOpen((open) => !open)}
+                  ><span className="status-pick-value">{choice === 'sent' ? 'נשלח' : 'סיים'}</span><IconCaretDown /></button>?
                 </p>
                 {menuOpen ? (
                   <ul className="status-inline-menu" role="listbox" aria-label="בחירת סטטוס">

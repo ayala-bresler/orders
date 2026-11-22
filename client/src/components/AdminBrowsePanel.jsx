@@ -1,17 +1,34 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { applySessionFromIdentifyResult } from '../utils/sessionAuth.js';
 import {
   advanceAdminItemStatus,
   advanceAdminOrderStatus,
   createAdminStore,
+  deleteAdminCustomer,
   fetchAdminCustomers,
   fetchAdminStores,
   selectAdminCustomer,
 } from '../adminApi.js';
 import OrderStatusCell from './OrderStatusCell.jsx';
+import StatusColumnFilter from './StatusColumnFilter.jsx';
+import ConfirmDialog from './ConfirmDialog.jsx';
+import { IconTrash } from './Icons.jsx';
 import { formatItemPlateDiameter } from '../utils/orderItemDisplay.js';
 import { detectTextDir } from '../utils/textDirection.js';
+import { rowMatchesStatusFilter, STATUS_ORDER } from '../utils/orderStatus.js';
 import BidiText from './BidiText.jsx';
+
+/** Compare manual order numbers: numeric when both are digits, else locale text. */
+function compareOrderNumbers(a, b) {
+  const pa = String(a?.phone || '').trim();
+  const pb = String(b?.phone || '').trim();
+  const na = /^\d+$/.test(pa) ? Number(pa) : NaN;
+  const nb = /^\d+$/.test(pb) ? Number(pb) : NaN;
+  if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
+  if (Number.isFinite(na) && !Number.isFinite(nb)) return -1;
+  if (!Number.isFinite(na) && Number.isFinite(nb)) return 1;
+  return pa.localeCompare(pb, 'he', { numeric: true, sensitivity: 'base' });
+}
 
 function listModelLabel(customer) {
   const name = String(customer.model_name || '').trim();
@@ -45,9 +62,13 @@ export default function AdminBrowsePanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('');
+  const [orderNumberDir, setOrderNumberDir] = useState('asc');
+  const [shownStatuses, setShownStatuses] = useState(() => new Set(STATUS_ORDER));
   const [newStoreName, setNewStoreName] = useState('');
   const [newStorePassword, setNewStorePassword] = useState('');
   const [createNotice, setCreateNotice] = useState('');
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const loadStores = async () => {
     setBusy(true);
@@ -110,6 +131,27 @@ export default function AdminBrowsePanel({
     return data.warnings || [];
   };
 
+  const requestDelete = (customer, e) => {
+    e?.stopPropagation?.();
+    e?.preventDefault?.();
+    setPendingDelete(customer);
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    setError('');
+    try {
+      await deleteAdminCustomer(pendingDelete.customer_id);
+      setPendingDelete(null);
+      await loadCustomers(selectedStoreId);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const pickCustomer = async (customer) => {
     setBusy(true);
     setError('');
@@ -156,12 +198,31 @@ export default function AdminBrowsePanel({
     }
   };
 
-  const filteredCustomers = customers.filter((c) => {
+  const filteredCustomers = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    if (!q) return true;
-    // Manual order number only (customers.phone) — not auto order id / name / model.
-    return String(c.phone || '').toLowerCase().includes(q);
-  });
+    const list = customers.filter((c) => {
+      if (q && !String(c.phone || '').toLowerCase().includes(q)) return false;
+      return rowMatchesStatusFilter(c.order_id, c.order_status, c.items, shownStatuses);
+    });
+    const sorted = [...list].sort(compareOrderNumbers);
+    if (orderNumberDir === 'desc') sorted.reverse();
+    return sorted;
+  }, [customers, filter, orderNumberDir, shownStatuses]);
+
+  const toggleShownStatus = (id) => {
+    setShownStatuses((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleOrderNumberSort = (e) => {
+    e?.stopPropagation?.();
+    e?.preventDefault?.();
+    setOrderNumberDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+  };
 
   const filteredStores = stores.filter((s) => {
     const q = filter.trim().toLowerCase();
@@ -302,7 +363,7 @@ export default function AdminBrowsePanel({
                 ))}
               </ul>
             )
-          ) : filteredCustomers.length === 0 ? (
+          ) : customers.length === 0 ? (
             <p className="hint">אין הזמנות להצגה.</p>
           ) : (
             <div className="my-customers-table-wrap">
@@ -311,12 +372,48 @@ export default function AdminBrowsePanel({
                   <tr>
                     <th className="col-name">שם</th>
                     <th className="col-model">דגם</th>
-                    <th className="col-phone">מספר הזמנה</th>
+                    <th className="col-phone">
+                      <button
+                        type="button"
+                        className="orders-sort-btn"
+                        onClick={toggleOrderNumberSort}
+                        aria-label={
+                          orderNumberDir === 'asc'
+                            ? 'מיון מספר הזמנה בסדר עולה — לחץ לסדר יורד'
+                            : 'מיון מספר הזמנה בסדר יורד — לחץ לסדר עולה'
+                        }
+                        title={
+                          orderNumberDir === 'asc'
+                            ? 'סדר עולה — לחץ להיפוך'
+                            : 'סדר יורד — לחץ להיפוך'
+                        }
+                      >
+                        <span>מספר הזמנה</span>
+                        <span
+                          className={`orders-sort-arrow${
+                            orderNumberDir === 'desc' ? ' is-desc' : ''
+                          }`}
+                          aria-hidden="true"
+                        >
+                          ▲
+                        </span>
+                      </button>
+                    </th>
                     {!selectedStoreId ? <th className="col-store">חנות</th> : null}
-                    <th className="col-status">סטטוס</th>
+                    <th className="col-status">
+                      <StatusColumnFilter shown={shownStatuses} onToggleStatus={toggleShownStatus} />
+                    </th>
+                    <th className="col-actions" aria-label="פעולות" />
                   </tr>
                 </thead>
                 <tbody>
+                  {filteredCustomers.length === 0 ? (
+                    <tr>
+                      <td className="orders-empty-cell" colSpan={selectedStoreId ? 5 : 6}>
+                        אין הזמנות להצגה.
+                      </td>
+                    </tr>
+                  ) : null}
                   {filteredCustomers.map((c) => (
                     <tr
                       key={c.customer_id}
@@ -358,7 +455,8 @@ export default function AdminBrowsePanel({
                           orderId={c.order_id}
                           orderStatus={c.order_status}
                           items={c.items}
-                          disabled={busy}
+                          shownStatuses={shownStatuses}
+                          disabled={busy || deleting}
                           onAdvance={async (payload) => {
                             setError('');
                             try {
@@ -370,6 +468,18 @@ export default function AdminBrowsePanel({
                           }}
                         />
                       </td>
+                      <td className="col-actions">
+                        <button
+                          type="button"
+                          className="orders-row-delete"
+                          disabled={busy || deleting}
+                          onClick={(e) => requestDelete(c, e)}
+                          aria-label={`מחיקת הזמנה ${c.phone || c.full_name}`}
+                          title="מחיקת הזמנה"
+                        >
+                          <IconTrash />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -378,6 +488,22 @@ export default function AdminBrowsePanel({
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="מחיקת הזמנה"
+        message={
+          pendingDelete
+            ? `למחוק סופית את ההזמנה של «${pendingDelete.full_name}» (מספר ${pendingDelete.phone})? לא ניתן לשחזר.`
+            : ''
+        }
+        confirmLabel="מחיקה סופית"
+        cancelLabel="ביטול"
+        danger
+        busy={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => !deleting && setPendingDelete(null)}
+      />
     </div>
   );
 }

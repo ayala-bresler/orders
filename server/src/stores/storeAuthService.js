@@ -357,20 +357,24 @@ async function listStoreCustomers(storeId) {
   }));
 }
 
-/** Permanently delete a store customer (and cascaded orders/items) + storage folders. */
+/** Permanently delete a customer (and cascaded orders/items) + storage folders.
+ *  storeId null deletes any customer (admin). A store id limits the delete to that store.
+ */
 async function deleteStoreCustomer(storeId, customerId) {
-  const sid = Number(storeId);
+  const sid = storeId == null || storeId === '' ? null : Number(storeId);
   const cid = Number(customerId);
-  if (!Number.isFinite(sid) || !Number.isFinite(cid)) {
+  if ((sid != null && !Number.isFinite(sid)) || !Number.isFinite(cid)) {
     const e = new Error('מזהה הזמנה שגוי.');
     e.status = 400;
     throw e;
   }
 
-  const { rows: owned } = await query(
-    `SELECT customer_id FROM customers WHERE customer_id = $1 AND store_id = $2`,
-    [cid, sid]
-  );
+  const { rows: owned } = sid == null
+    ? await query(`SELECT customer_id FROM customers WHERE customer_id = $1`, [cid])
+    : await query(
+        `SELECT customer_id FROM customers WHERE customer_id = $1 AND store_id = $2`,
+        [cid, sid]
+      );
   if (!owned[0]) {
     const e = new Error('ההזמנה לא נמצאה ברשימת החנות.');
     e.status = 404;
@@ -392,10 +396,14 @@ async function deleteStoreCustomer(storeId, customerId) {
     }
   }
 
-  await query(`DELETE FROM customers WHERE customer_id = $1 AND store_id = $2`, [
-    cid,
-    sid,
-  ]);
+  if (sid == null) {
+    await query(`DELETE FROM customers WHERE customer_id = $1`, [cid]);
+  } else {
+    await query(`DELETE FROM customers WHERE customer_id = $1 AND store_id = $2`, [
+      cid,
+      sid,
+    ]);
+  }
 
   return { deletedCustomerId: cid };
 }

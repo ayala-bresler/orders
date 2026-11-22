@@ -4,7 +4,9 @@
  * The summary helper does not map a line's `open` to `approved`.
  */
 
-const WORKFLOW = new Set(['pending_approval', 'approved', 'finished', 'sent']);
+export const STATUS_ORDER = ['pending_approval', 'approved', 'finished', 'sent'];
+
+const WORKFLOW = new Set(STATUS_ORDER);
 
 export const STATUS_LABELS = {
   pending_approval: 'ממתין לאישור',
@@ -58,4 +60,20 @@ export function canAdvanceDisplayStatus(displayStatus) {
 
 export function statusLabel(displayStatus) {
   return STATUS_LABELS[displayStatus] || STATUS_LABELS.pending_approval;
+}
+
+/** Display statuses on one list row: one per product line, or the order when it has none. */
+export function rowDisplayStatuses(orderId, orderStatus, items) {
+  const rows = Array.isArray(items) ? items : [];
+  if (rows.length) {
+    return rows.map((item) => displayItemStatus(item.status, orderStatus));
+  }
+  if (orderId) return [displayOrderStatus(orderStatus)];
+  return ['pending_approval'];
+}
+
+/** A row stays visible when at least one of its statuses is still selected. */
+export function rowMatchesStatusFilter(orderId, orderStatus, items, shown) {
+  if (!shown) return true;
+  return rowDisplayStatuses(orderId, orderStatus, items).some((status) => shown.has(status));
 }

@@ -87,6 +87,12 @@ export async function advanceAdminOrderStatus(orderId, status) {
   });
 }
 
+export async function deleteAdminCustomer(customerId) {
+  return adminFetch(`/api/admin/customers/${customerId}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function selectAdminCustomer(customerId) {
   return adminFetch('/api/admin/select-customer', {
     method: 'POST',

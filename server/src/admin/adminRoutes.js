@@ -10,6 +10,7 @@ const customerService = require('../services/customerService');
 const orderService = require('../services/orderService');
 const { sendWorkflowStatusNotice } = require('../services/statusNotice');
 const { parseItemStatusRows } = require('../utils/orderStatus');
+const { deleteStoreCustomer } = require('../stores/storeAuthService');
 const { withSession } = require('../services/sessionService');
 const {
   credentialsMatchAdmin,
@@ -281,6 +282,21 @@ router.get('/customers', requireAdminSession, async (req, res, next) => {
         plate_diameter: r.plate_diameter != null ? Number(r.plate_diameter) : null,
       })),
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/customers/:customerId', requireAdminSession, async (req, res, next) => {
+  try {
+    const customerId = Number(req.params.customerId);
+    if (!Number.isFinite(customerId)) {
+      const e = new Error('חסר מזהה הזמנה.');
+      e.status = 400;
+      throw e;
+    }
+    const result = await deleteStoreCustomer(null, customerId);
+    res.json({ ok: true, ...result });
   } catch (err) {
     next(err);
   }

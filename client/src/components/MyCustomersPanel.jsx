@@ -8,9 +8,11 @@ import {
   selectMyCustomer,
 } from '../storeApi.js';
 import { detectTextDir } from '../utils/textDirection.js';
+import { rowMatchesStatusFilter, STATUS_ORDER } from '../utils/orderStatus.js';
 import ConfirmDialog from './ConfirmDialog.jsx';
 import BidiText from './BidiText.jsx';
 import OrderStatusCell from './OrderStatusCell.jsx';
+import StatusColumnFilter from './StatusColumnFilter.jsx';
 import { IconTrash } from './Icons.jsx';
 
 function listModelLabel(customer) {
@@ -51,6 +53,7 @@ export default function MyCustomersPanel({
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('');
   const [orderNumberDir, setOrderNumberDir] = useState('asc'); // asc | desc
+  const [shownStatuses, setShownStatuses] = useState(() => new Set(STATUS_ORDER));
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -59,14 +62,22 @@ export default function MyCustomersPanel({
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
     const list = customers.filter((c) => {
-      if (!q) return true;
-      // Manual order number only (customers.phone) — not auto order id / name / model.
-      return String(c.phone || '').toLowerCase().includes(q);
+      if (q && !String(c.phone || '').toLowerCase().includes(q)) return false;
+      return rowMatchesStatusFilter(c.order_id, c.order_status, c.items, shownStatuses);
     });
     const sorted = [...list].sort(compareOrderNumbers);
     if (orderNumberDir === 'desc') sorted.reverse();
     return sorted;
-  }, [customers, filter, orderNumberDir]);
+  }, [customers, filter, orderNumberDir, shownStatuses]);
+
+  const toggleShownStatus = (id) => {
+    setShownStatuses((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const toggleOrderNumberSort = (e) => {
     e?.stopPropagation?.();
@@ -227,7 +238,7 @@ export default function MyCustomersPanel({
           {error && <div className="notice error inline">{error}</div>}
           {busy && !customers.length ? (
             <p className="hint">טוען…</p>
-          ) : filtered.length === 0 ? (
+          ) : customers.length === 0 ? (
             <p className="hint">אין הזמנות משויכות לחנות עדיין.</p>
           ) : (
             <div className="my-customers-table-wrap" ref={tableWrapRef}>
@@ -263,11 +274,21 @@ export default function MyCustomersPanel({
                         </span>
                       </button>
                     </th>
+                    <th className="col-status">
+                      <StatusColumnFilter shown={shownStatuses} onToggleStatus={toggleShownStatus} />
+                    </th>
                     <th className="col-actions" aria-label="פעולות" />
                     <th className="col-status">סטטוס</th>
                   </tr>
                 </thead>
                 <tbody>
+                  {filtered.length === 0 ? (
+                    <tr>
+                      <td className="orders-empty-cell" colSpan={5}>
+                        אין הזמנות להצגה.
+                      </td>
+                    </tr>
+                  ) : null}
                   {filtered.map((c) => (
                     <tr
                       key={c.customer_id}
@@ -296,6 +317,24 @@ export default function MyCustomersPanel({
                       </td>
                       <td className="col-phone bidi-ltr" dir="ltr">
                         {c.phone}
+                      </td>
+                      <td className="col-status" onClick={(e) => e.stopPropagation()}>
+                        <OrderStatusCell
+                          orderId={c.order_id}
+                          orderStatus={c.order_status}
+                          items={c.items}
+                          shownStatuses={shownStatuses}
+                          disabled={busy || deleting}
+                          onAdvance={async (payload) => {
+                            setError('');
+                            try {
+                              return await advanceStatus(payload);
+                            } catch (err) {
+                              setError(err.message);
+                              throw err;
+                            }
+                          }}
+                        />
                       </td>
                       <td className="col-actions">
                         <button
