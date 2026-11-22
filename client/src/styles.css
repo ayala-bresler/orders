@@ -2693,13 +2693,7 @@ button.order-status-icon:disabled {
 .status-word-with-caret {
   display: inline-flex;
   align-items: center;
-  gap: 0.15em;
-  font-size: 26px;
-  vertical-align: baseline;
-}
-.status-inline-caret {
-  display: inline-flex;
-  align-items: center;
+  gap: 0;
   margin: 0;
   padding: 0;
   border: none;
@@ -2707,20 +2701,21 @@ button.order-status-icon:disabled {
   color: inherit;
   font: inherit;
   font-size: 26px;
-  line-height: 0;
+  line-height: 1.2;
+  vertical-align: baseline;
   cursor: pointer;
 }
-.status-inline-caret:focus {
+.status-word-with-caret:focus {
   outline: none;
 }
 .status-pick-caret {
-  width: 0.62em;
-  height: 0.62em;
+  width: 0.55em;
+  height: 0.34em;
   flex: 0 0 auto;
   color: currentColor;
   transition: transform 0.15s ease;
 }
-.status-inline-caret.is-open .status-pick-caret {
+.status-word-with-caret.is-open .status-pick-caret {
   transform: rotate(180deg);
 }
 .status-pick-value {
