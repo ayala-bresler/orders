@@ -278,7 +278,6 @@ export default function MyCustomersPanel({
                       <StatusColumnFilter shown={shownStatuses} onToggleStatus={toggleShownStatus} />
                     </th>
                     <th className="col-actions" aria-label="פעולות" />
-                    <th className="col-status">סטטוס</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -347,23 +346,6 @@ export default function MyCustomersPanel({
                         >
                           <IconTrash />
                         </button>
-                      </td>
-                      <td className="col-status" onClick={(e) => e.stopPropagation()}>
-                        <OrderStatusCell
-                          orderId={c.order_id}
-                          orderStatus={c.order_status}
-                          items={c.items}
-                          disabled={busy || deleting}
-                          onAdvance={async (payload) => {
-                            setError('');
-                            try {
-                              return await advanceStatus(payload);
-                            } catch (err) {
-                              setError(err.message);
-                              throw err;
-                            }
-                          }}
-                        />
                       </td>
                     </tr>
                   ))}
