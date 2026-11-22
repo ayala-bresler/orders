@@ -11,6 +11,7 @@ import {
   isSpecialTextModel,
   SPECIAL_MODEL_DISPLAY_NAME,
 } from '../utils/modelScopes.js';
+import { isResendItemStatus } from '../utils/orderStatus.js';
 
 function itemPickerLabel(item) {
   const summary = formatProductSummaryLine(item, orderItemImageModelCode(item));
@@ -158,11 +159,11 @@ export default function ProductPicker({
                 key={item.order_item_id}
                 type="button"
                 className={`btn small model-picker-name-btn${
-                  item.status === 'completed' ? ' model-picker-name-btn--sent' : ''
+                  isResendItemStatus(item.status) ? ' model-picker-name-btn--sent' : ''
                 }`}
                 onClick={() => onOpenItem?.(item)}
                 title={
-                  item.status === 'completed'
+                  isResendItemStatus(item.status)
                     ? `${label} — ההזמנה נשלחה`
                     : label
                 }

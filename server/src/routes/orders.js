@@ -296,7 +296,8 @@ async function exportDxfEmailHandler(req, res, next) {
       modelRows.map((row) => [row.model_code, row.model_name])
     );
     const item = details?.item || {};
-    const isResend = String(item.status || '').toLowerCase() === 'completed';
+    const { isResendItemStatus } = require('../utils/orderStatus');
+    const isResend = isResendItemStatus(item.status);
     const { mainModelName, formatEmailAccessoryLine, hasMainModel } = require('../utils/orderItemDisplay');
     // Use live order_items fields — model = PDF דגם (main only); accessories match PDF checks.
     const modelName = mainModelName(item, modelNameByCode);
@@ -419,7 +420,7 @@ async function exportDxfEmailHandler(req, res, next) {
       items: completed.items || completed.remainingItems,
       remainingCount: completed.remainingCount,
       orderSubmitted: completed.orderSubmitted,
-      status: completed.orderSubmitted ? 'submitted' : 'open',
+      status: 'approved',
       warnings: [
         ...result.warnings,
         ...(pdfWarning ? [`PDF: ${pdfWarning}`] : []),
@@ -428,11 +429,9 @@ async function exportDxfEmailHandler(req, res, next) {
           ? [`מייל לחנות לא נשלח: ${storeEmailResult.error}`]
           : storeEmailResult?.skipped && storeEmailResult?.reason === 'smtp_incomplete'
             ? ['מייל לחנות לא נשלח: חסר אימייל חנות בהזדהות.']
-            : storeEmailResult?.skipped && storeEmailResult?.reason === 'no_store'
-              ? ['מייל לחנות לא נשלח: אין סשן חנות פעיל.']
-              : storeEmailResult?.skipped && storeEmailResult?.reason === 'no_pdf'
-                ? ['מייל לחנות לא נשלח: לא נוצרו קבצי PDF לחנות.']
-                : []),
+            : storeEmailResult?.skipped && storeEmailResult?.reason === 'no_pdf'
+              ? ['מייל לחנות לא נשלח: לא נוצרו קבצי PDF לחנות.']
+              : []),
       ],
       storeOrderPdfAttached: Boolean(pdfResult?.pdfBytes),
       storeVersesPdfAttached: Boolean(versesPrintPdf?.pdfBytes),
@@ -493,7 +492,8 @@ async function completeOrderHandler(req, res, next) {
       modelRows.map((row) => [row.model_code, row.model_name])
     );
     const item = details.item || {};
-    const isResend = String(item.status || '').toLowerCase() === 'completed';
+    const { isResendItemStatus } = require('../utils/orderStatus');
+    const isResend = isResendItemStatus(item.status);
     const { mainModelName, formatEmailAccessoryLine, hasMainModel } = require('../utils/orderItemDisplay');
     // Use live order_items fields — model = PDF דגם (main only); accessories match PDF checks.
     const modelName = mainModelName(item, modelNameByCode);
@@ -589,8 +589,6 @@ async function completeOrderHandler(req, res, next) {
       warnings.push(`מייל לחנות לא נשלח: ${storeEmailResult.error}`);
     } else if (storeEmailResult?.skipped && storeEmailResult?.reason === 'smtp_incomplete') {
       warnings.push('מייל לחנות לא נשלח: חסר אימייל חנות בהזדהות.');
-    } else if (storeEmailResult?.skipped && storeEmailResult?.reason === 'no_store') {
-      warnings.push('מייל לחנות לא נשלח: אין סשן חנות פעיל.');
     } else if (storeEmailResult?.skipped && storeEmailResult?.reason === 'no_pdf') {
       warnings.push('מייל לחנות לא נשלח: לא נוצר קובץ PDF.');
     }
@@ -610,7 +608,7 @@ async function completeOrderHandler(req, res, next) {
       items: completed.items || completed.remainingItems,
       remainingCount: completed.remainingCount,
       orderSubmitted: completed.orderSubmitted,
-      status: completed.orderSubmitted ? 'submitted' : 'open',
+      status: 'approved',
       warnings,
     });
   } catch (err) {

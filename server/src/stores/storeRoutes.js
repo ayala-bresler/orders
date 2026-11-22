@@ -7,6 +7,8 @@
 
 const express = require('express');
 const customerService = require('../services/customerService');
+const orderService = require('../services/orderService');
+const { sendWorkflowStatusNotice } = require('../services/statusNotice');
 const { withSession } = require('../services/sessionService');
 const {
   resolveStoreEntry,
@@ -186,6 +188,36 @@ router.post('/select-customer', requireStoreSession, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+async function advanceStatus(req, res, next, itemId) {
+  try {
+    const orderId = Number(req.params.orderId);
+    const result = await orderService.advanceWorkflowStatus({
+      orderId,
+      itemId,
+      status: req.body?.status,
+      storeId: req.store.storeId,
+    });
+    const warnings = await sendWorkflowStatusNotice(result);
+    res.json({
+      ok: true,
+      orderId: result.orderId,
+      itemId: result.itemId,
+      status: result.status,
+      warnings,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+router.post('/orders/:orderId/items/:itemId/status', requireStoreSession, (req, res, next) => {
+  advanceStatus(req, res, next, req.params.itemId);
+});
+
+router.post('/orders/:orderId/status', requireStoreSession, (req, res, next) => {
+  advanceStatus(req, res, next, null);
 });
 
 module.exports = router;

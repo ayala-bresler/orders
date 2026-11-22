@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { applySessionFromIdentifyResult } from '../utils/sessionAuth.js';
-import { deleteMyCustomer, fetchMyCustomers, selectMyCustomer } from '../storeApi.js';
+import {
+  advanceStoreItemStatus,
+  advanceStoreOrderStatus,
+  deleteMyCustomer,
+  fetchMyCustomers,
+  selectMyCustomer,
+} from '../storeApi.js';
 import { detectTextDir } from '../utils/textDirection.js';
 import ConfirmDialog from './ConfirmDialog.jsx';
 import BidiText from './BidiText.jsx';
+import OrderStatusCell from './OrderStatusCell.jsx';
 import { IconTrash } from './Icons.jsx';
 
 function listModelLabel(customer) {
@@ -154,6 +161,25 @@ export default function MyCustomersPanel({
     setPendingDelete(customer);
   };
 
+  const advanceStatus = async ({ orderId, itemId, status }) => {
+    const data = itemId
+      ? await advanceStoreItemStatus(orderId, itemId, status)
+      : await advanceStoreOrderStatus(orderId, status);
+    setCustomers((prev) =>
+      prev.map((row) => {
+        if (Number(row.order_id) !== Number(orderId)) return row;
+        if (!itemId) return { ...row, order_status: data.status };
+        return {
+          ...row,
+          items: (row.items || []).map((it) =>
+            Number(it.order_item_id) === Number(itemId) ? { ...it, status: data.status } : it
+          ),
+        };
+      })
+    );
+    return data.warnings || [];
+  };
+
   const confirmDelete = async () => {
     if (!pendingDelete) return;
     setDeleting(true);
@@ -238,6 +264,7 @@ export default function MyCustomersPanel({
                       </button>
                     </th>
                     <th className="col-actions" aria-label="פעולות" />
+                    <th className="col-status">סטטוס</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -281,6 +308,23 @@ export default function MyCustomersPanel({
                         >
                           <IconTrash />
                         </button>
+                      </td>
+                      <td className="col-status" onClick={(e) => e.stopPropagation()}>
+                        <OrderStatusCell
+                          orderId={c.order_id}
+                          orderStatus={c.order_status}
+                          items={c.items}
+                          disabled={busy || deleting}
+                          onAdvance={async (payload) => {
+                            setError('');
+                            try {
+                              return await advanceStatus(payload);
+                            } catch (err) {
+                              setError(err.message);
+                              throw err;
+                            }
+                          }}
+                        />
                       </td>
                     </tr>
                   ))}

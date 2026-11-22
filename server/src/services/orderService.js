@@ -75,8 +75,8 @@ async function createOrderItem(orderId, input) {
   const productTypeCode = input.product_type_code || templateResolver.DEFAULT_PRODUCT_TYPE_CODE;
   const { rows } = await query(
     `INSERT INTO order_items
-       (order_id, product_code, quantity, price_at_purchase, model, size_code, product_type_code, plate_diameter)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       (order_id, product_code, quantity, price_at_purchase, model, size_code, product_type_code, plate_diameter, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending_approval')
      RETURNING ${PK} AS order_item_id, order_id, product_code, quantity, model, size_code, product_type_code, plate_diameter`,
     [
       orderId,
@@ -544,18 +544,14 @@ async function saveOrderItemDetails(orderId, orderItemId, { order: orderInput = 
   }
 }
 
-async function markOrderSubmitted(orderId) {
-  await query(
-    `UPDATE orders SET status = 'submitted' WHERE order_id = $1`,
-    [orderId]
-  );
+async function markOrderSubmitted(_orderId) {
+  // Orders stay on the same row. Do not write the legacy "submitted" status.
 }
 
-const OPEN_STATUSES = ['draft', 'open'];
-
 /**
- * After a product is finished (DXF/PDF), mark that line completed — do not delete it.
- * The item stays on the order page (shown faded). Order stays open for more products.
+ * סיום הזמנה marks that product line approved. The order stays the same one
+ * (no new draft), including when its status is still a legacy value.
+ * Sibling lines are not rewritten.
  */
 async function completeOrderItem(orderId, orderItemId) {
   const orderIdNum = Number(orderId);
@@ -572,11 +568,11 @@ async function completeOrderItem(orderId, orderItemId) {
   } = require('../utils/ensureOrderItemStatus');
 
   const { rows: orderRows } = await query(
-    `SELECT order_id FROM orders WHERE order_id = $1 AND status = ANY($2)`,
-    [orderIdNum, OPEN_STATUSES]
+    `SELECT order_id FROM orders WHERE order_id = $1`,
+    [orderIdNum]
   );
   if (!orderRows[0]) {
-    const e = new Error('ההזמנה לא נמצאה או שאינה ניתנת לעריכה.');
+    const e = new Error('ההזמנה לא נמצאה.');
     e.status = 404;
     throw e;
   }
@@ -598,7 +594,7 @@ async function completeOrderItem(orderId, orderItemId) {
   try {
     ({ rows } = await query(
       `UPDATE order_items
-          SET status = 'completed'
+          SET status = 'approved'
         WHERE order_id = $1 AND ${PK} = $2
         RETURNING ${PK} AS order_item_id, status`,
       [orderIdNum, itemIdNum]
@@ -609,7 +605,7 @@ async function completeOrderItem(orderId, orderItemId) {
     await ensureOrderItemStatusColumn();
     ({ rows } = await query(
       `UPDATE order_items
-          SET status = 'completed'
+          SET status = 'approved'
         WHERE order_id = $1 AND ${PK} = $2
         RETURNING ${PK} AS order_item_id, status`,
       [orderIdNum, itemIdNum]
@@ -621,15 +617,10 @@ async function completeOrderItem(orderId, orderItemId) {
     throw e;
   }
 
-  // Ensure order stays editable for additional products.
-  await query(
-    `UPDATE orders SET status = 'open' WHERE order_id = $1 AND status = 'draft'`,
-    [orderIdNum]
-  );
-
   const { getOrderItems } = require('./customerService');
+  const { isResendItemStatus } = require('../utils/orderStatus');
   const items = await getOrderItems(orderIdNum);
-  const openCount = items.filter((it) => it.status !== 'completed').length;
+  const openCount = items.filter((it) => !isResendItemStatus(it.status)).length;
 
   return {
     completedItemId: itemIdNum,
@@ -676,11 +667,11 @@ async function deleteOrderItem(orderId, orderItemId) {
   }
 
   const { rows: orderRows } = await query(
-    `SELECT order_id FROM orders WHERE order_id = $1 AND status = ANY($2)`,
-    [orderIdNum, OPEN_STATUSES]
+    `SELECT order_id FROM orders WHERE order_id = $1`,
+    [orderIdNum]
   );
   if (!orderRows[0]) {
-    const e = new Error('ההזמנה לא נמצאה או שאינה ניתנת לעריכה.');
+    const e = new Error('ההזמנה לא נמצאה.');
     e.status = 404;
     throw e;
   }
@@ -713,9 +704,8 @@ async function deleteOrder(orderId) {
   const { rows } = await query(
     `DELETE FROM orders
       WHERE order_id = $1
-        AND status = ANY($2)
       RETURNING customer_id`,
-    [orderIdNum, OPEN_STATUSES]
+    [orderIdNum]
   );
 
   if (!rows[0]) {
@@ -737,6 +727,106 @@ async function deleteOrder(orderId) {
   return { deletedOrderId: orderIdNum, order, items: [] };
 }
 
+/**
+ * Move one product line — or an order that has no lines — to finished or sent.
+ * Approved is not accepted here; it only comes from סיום הזמנה.
+ * storeId, when set, limits the update to that store's customers.
+ */
+async function advanceWorkflowStatus({ orderId, itemId, status, storeId }) {
+  const {
+    displayItemStatus,
+    displayOrderStatus,
+    assertWorkflowAdvance,
+  } = require('../utils/orderStatus');
+
+  const orderIdNum = Number(orderId);
+  if (!Number.isInteger(orderIdNum)) {
+    const e = new Error('מזהה הזמנה שגוי.');
+    e.status = 400;
+    throw e;
+  }
+  const storeFilter = storeId == null || storeId === '' ? null : Number(storeId);
+  if (storeFilter != null && !Number.isInteger(storeFilter)) {
+    const e = new Error('מזהה חנות שגוי.');
+    e.status = 400;
+    throw e;
+  }
+
+  const { rows } = await query(
+    `SELECT o.order_id, o.status AS order_status,
+            c.full_name, c.phone, c.store_id
+       FROM orders o
+       JOIN customers c ON c.customer_id = o.customer_id
+      WHERE o.order_id = $1
+        AND ($2::integer IS NULL OR c.store_id = $2)`,
+    [orderIdNum, storeFilter]
+  );
+  if (!rows[0]) {
+    const e = new Error('ההזמנה לא נמצאה.');
+    e.status = 404;
+    throw e;
+  }
+  const order = rows[0];
+  const itemIdNum = itemId == null || itemId === '' ? null : Number(itemId);
+
+  if (itemIdNum == null) {
+    const { rows: countRows } = await query(
+      `SELECT COUNT(*)::int AS n FROM order_items WHERE order_id = $1`,
+      [orderIdNum]
+    );
+    if (Number(countRows[0]?.n) > 0) {
+      const e = new Error('יש לעדכן את סטטוס שורת המוצר.');
+      e.status = 400;
+      throw e;
+    }
+    const target = assertWorkflowAdvance(displayOrderStatus(order.order_status), status);
+    await query(`UPDATE orders SET status = $2 WHERE order_id = $1`, [orderIdNum, target]);
+    return {
+      orderId: orderIdNum,
+      itemId: null,
+      status: target,
+      phone: order.phone,
+      customerName: order.full_name,
+      storeId: order.store_id,
+    };
+  }
+
+  if (!Number.isInteger(itemIdNum)) {
+    const e = new Error('מזהה פריט שגוי.');
+    e.status = 400;
+    throw e;
+  }
+
+  const { rows: itemRows } = await query(
+    `SELECT ${PK} AS order_item_id, status
+       FROM order_items
+      WHERE order_id = $1 AND ${PK} = $2`,
+    [orderIdNum, itemIdNum]
+  );
+  if (!itemRows[0]) {
+    const e = new Error('הפריט לא נמצא בהזמנה.');
+    e.status = 404;
+    throw e;
+  }
+
+  const target = assertWorkflowAdvance(
+    displayItemStatus(itemRows[0].status, order.order_status),
+    status
+  );
+  await query(
+    `UPDATE order_items SET status = $3 WHERE order_id = $1 AND ${PK} = $2`,
+    [orderIdNum, itemIdNum, target]
+  );
+  return {
+    orderId: orderIdNum,
+    itemId: itemIdNum,
+    status: target,
+    phone: order.phone,
+    customerName: order.full_name,
+    storeId: order.store_id,
+  };
+}
+
 module.exports = {
   STORAGE_DIR,
   createOrderItem,
@@ -747,6 +837,7 @@ module.exports = {
   saveOrderItemDetails,
   markOrderSubmitted,
   completeOrderItem,
+  advanceWorkflowStatus,
   deleteOrderItem,
   deleteOrder,
   removeItemStorageFiles,
