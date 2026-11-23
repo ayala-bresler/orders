@@ -55,7 +55,7 @@ export function isResendItemStatus(itemStatus) {
 }
 
 export function canAdvanceDisplayStatus(displayStatus) {
-  return displayStatus === 'approved' || displayStatus === 'finished';
+  return displayStatus === 'approved' || displayStatus === 'finished' || displayStatus === 'sent';
 }
 
 export function statusLabel(displayStatus) {

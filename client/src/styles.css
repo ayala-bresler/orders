@@ -2767,6 +2767,26 @@ button.order-status-icon:disabled {
   font-weight: 800;
   line-height: 1.2;
 }
+.status-question-word {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+.status-choice-icons {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  margin: 4px 0 12px;
+}
+.status-choice-icons .order-status-icon.is-selected {
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px currentColor;
+}
+.status-pick-value--approved { color: #2e7d32; }
 .status-pick-value--finished { color: #1565c0; }
 .status-pick-value--sent { color: #6d4c41; }
 .status-inline-menu {

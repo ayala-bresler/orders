@@ -11,6 +11,8 @@ const { getConfig, sendTextEmail } = require('./emailService');
 const { workflowStatusSentence } = require('../utils/orderStatus');
 
 async function sendWorkflowStatusNotice({ status, phone, customerName, storeId }) {
+  const kind = String(status || '').trim().toLowerCase();
+  if (kind !== 'finished' && kind !== 'sent') return [];
   const sentence = workflowStatusSentence({ phone, customerName, status });
   const warnings = [];
 

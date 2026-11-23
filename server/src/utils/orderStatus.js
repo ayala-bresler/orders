@@ -72,33 +72,23 @@ function isResendItemStatus(itemStatus) {
 }
 
 function canAdvanceDisplayStatus(displayStatus) {
-  return displayStatus === 'approved' || displayStatus === 'finished';
+  return displayStatus === 'approved' || displayStatus === 'finished' || displayStatus === 'sent';
 }
 
 function assertWorkflowAdvance(displayStatus, targetStatus) {
   const target = norm(targetStatus);
-  if (target !== 'finished' && target !== 'sent') {
-    const e = new Error('ניתן לעדכן רק לסטטוס סיים או נשלח.');
+  if (target !== 'approved' && target !== 'finished' && target !== 'sent') {
+    const e = new Error('ניתן לעדכן רק לסטטוס מאושר, סיים או נשלח.');
     e.status = 400;
     throw e;
   }
   const current = norm(displayStatus);
-  if (current === 'sent') {
-    const e = new Error('לא ניתן לחזור אחורה מסטטוס נשלח.');
-    e.status = 400;
-    throw e;
-  }
   if (current === 'pending_approval') {
     const e = new Error('לא ניתן לאשר הזמנה מהרשימה. האישור נעשה בסיום הזמנה.');
     e.status = 400;
     throw e;
   }
-  if (current === 'finished' && target !== 'sent') {
-    const e = new Error('אחרי סיום ניתן רק לשלוח.');
-    e.status = 400;
-    throw e;
-  }
-  if (current !== 'approved' && current !== 'finished') {
+  if (!canAdvanceDisplayStatus(current)) {
     const e = new Error('לא ניתן לעדכן את הסטטוס הזה מהרשימה.');
     e.status = 400;
     throw e;

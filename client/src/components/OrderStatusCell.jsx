@@ -19,26 +19,12 @@ const ICONS = {
   sent: IconTruck,
 };
 
-const NEXT_OPTIONS = [
-  { id: 'finished', label: 'סיים' },
-  { id: 'sent', label: 'נשלח' },
-];
+const CHOICE_ORDER = ['approved', 'finished', 'sent'];
 
-function IconCaretDown() {
-  return (
-    <svg
-      className="status-pick-caret"
-      viewBox="4.8 7.6 14.4 8.8"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <polyline points="6 9 12 15 18 9" />
-    </svg>
-  );
+function defaultTarget(current) {
+  if (current === 'finished') return 'sent';
+  if (current === 'sent') return 'finished';
+  return 'finished';
 }
 
 function lineIcons(orderId, orderStatus, items) {
@@ -73,7 +59,7 @@ function lineIcons(orderId, orderStatus, items) {
 
 /**
  * One status icon per product line. Hover shows the Hebrew name.
- * pending and sent are not clickable. Approved can move to finished (default) or sent.
+ * Pending stays locked. Approved, finished, and sent can move among those three.
  */
 export default function OrderStatusCell({
   orderId,
@@ -88,14 +74,17 @@ export default function OrderStatusCell({
   );
   const [dialog, setDialog] = useState(null);
   const [choice, setChoice] = useState('finished');
-  const [menuOpen, setMenuOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const openDialog = (icon) => {
     if (disabled || saving || !icon.clickable || !canAdvanceDisplayStatus(icon.display)) return;
-    setChoice(icon.display === 'finished' ? 'sent' : 'finished');
-    setMenuOpen(false);
+    setChoice(defaultTarget(icon.display));
     setDialog(icon);
+  };
+
+  const cycleChoice = () => {
+    const index = CHOICE_ORDER.indexOf(choice);
+    setChoice(CHOICE_ORDER[(index + 1) % CHOICE_ORDER.length]);
   };
 
   const closeDialog = () => {
@@ -105,7 +94,7 @@ export default function OrderStatusCell({
 
   const confirm = async () => {
     if (!dialog || !onAdvance) return;
-    const target = dialog.display === 'finished' ? 'sent' : choice;
+    const target = choice;
     setSaving(true);
     try {
       const warnings = await onAdvance({
@@ -177,48 +166,41 @@ export default function OrderStatusCell({
             className="confirm-dialog card status-advance-dialog"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 id="status-advance-title">עדכון סטטוס</h3>
-            {dialog.display === 'approved' ? (
-              <>
-                <p className="status-advance-message">
-                  להעביר את הסטטוס ל<button
+            <h3 id="status-advance-title" className={`status-pick-value status-pick-value--${choice}`}>
+              {statusLabel(choice)}
+            </h3>
+            <p className="status-advance-message">
+              להעביר את הסטטוס ל<button
+                type="button"
+                className={`status-question-word status-pick-value status-pick-value--${choice}`}
+                aria-label={`הסטטוס הנבחר: ${statusLabel(choice)}. לחץ למעבר בין מאושר, סיים ונשלח`}
+                disabled={saving}
+                onClick={cycleChoice}
+              >{statusLabel(choice)}</button>?
+            </p>
+            <div className="status-choice-icons" role="listbox" aria-label="בחירת סטטוס">
+              {CHOICE_ORDER.map((id) => {
+                const Icon = ICONS[id];
+                const selected = choice === id;
+                return (
+                  <button
+                    key={id}
                     type="button"
-                    className={`status-word-with-caret status-pick-value--${choice}${menuOpen ? ' is-open' : ''}`}
-                    aria-haspopup="listbox"
-                    aria-expanded={menuOpen}
-                    aria-label="בחירה בין סיים לנשלח"
+                    role="option"
+                    aria-selected={selected}
+                    className={`order-status-icon order-status-icon--${id}${
+                      selected ? ' is-selected' : ''
+                    }`}
+                    title={statusLabel(id)}
+                    aria-label={statusLabel(id)}
                     disabled={saving}
-                    onClick={() => setMenuOpen((open) => !open)}
-                  ><span className="status-pick-value">{choice === 'sent' ? 'נשלח' : 'סיים'}</span><IconCaretDown /></button>?
-                </p>
-                {menuOpen ? (
-                  <ul className="status-inline-menu" role="listbox" aria-label="בחירת סטטוס">
-                    {NEXT_OPTIONS.map((option) => (
-                      <li key={option.id}>
-                        <button
-                          type="button"
-                          role="option"
-                          aria-selected={choice === option.id}
-                          className={`status-pick-option status-pick-value--${option.id}${
-                            choice === option.id ? ' is-selected' : ''
-                          }`}
-                          onClick={() => {
-                            setChoice(option.id);
-                            setMenuOpen(false);
-                          }}
-                        >
-                          {option.label}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </>
-            ) : (
-              <p className="status-advance-message">
-                להעביר את הסטטוס ל<span className="status-pick-value status-pick-value--sent">נשלח</span>?
-              </p>
-            )}
+                    onClick={() => setChoice(id)}
+                  >
+                    <Icon />
+                  </button>
+                );
+              })}
+            </div>
             <div className="actions">
               <button type="button" className="btn" onClick={closeDialog} disabled={saving}>
                 ביטול
